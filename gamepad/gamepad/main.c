@@ -1,11 +1,16 @@
 #include "defines.h"
 
 #include <avr/io.h>
-#include <avr/pgmspace.h>
+#include <avr/interrupt.h>
 #include <util/delay.h>
 
 #include "usbdrv/usbdrv.h"
-#include "descriptors.h"
+#include "descriptor.h"
+
+uchar usbFunctionDescriptor(usbRequest_t * rq)
+{
+	return 0xFF;
+}
 
 USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 {
@@ -24,7 +29,7 @@ void main(void)
 	usbDeviceConnect();
 	usbInit();
 	
-	asm("SEI");
+	sei();
     while (1) 
     {
 		usbPoll();
