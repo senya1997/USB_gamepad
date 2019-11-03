@@ -4,11 +4,11 @@
 #define TOTAL_LEN_DESCR (18 + 7 * 1 + 9)
 
 const int PROGMEM desc_prod_str[] = {
-	USB_STRING_DESCRIPTOR_HEADER(1),
+	USB_STRING_DESCRIPTOR_HEADER(10),
 	's', 's', '_', 'g', 'a', 'm', 'e', 'p', 'a', 'd'
 };
 
-const uchar PROGMEM descr_dev[] = {
+const uchar PROGMEM desc_dev[] = {
 	0x12,					/* length of descriptor in bytes */
 	USBDESCR_DEVICE,		/* descriptor type */
 	0x10, 0x01,				/* USB version supported */
@@ -25,7 +25,8 @@ const uchar PROGMEM descr_dev[] = {
 	0x01,					/* number of configurations */
 };
 
-const uchar PROGMEM descr_conf[] = {
+const char PROGMEM usbDescriptorConfiguration[] = { 0 };
+const uchar PROGMEM desc_conf[] = {
 	
 				/****************** Configuration descriptor ******************/
 	
@@ -70,54 +71,31 @@ const uchar PROGMEM descr_conf[] = {
     USB_CFG_INTR_POLL_INTERVAL,
 };
 
-const char sega_usbHidReportDescriptor[] PROGMEM = {
+const char desc_sega_hidreport[] PROGMEM = {
 	0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
 	0x09, 0x05,                    // USAGE (Game Pad)
-	0xa1, 0x01,                    // COLLECTION (Application)
-	0x09, 0x01,                    //   USAGE (Pointer)
-	0xa1, 0x00,                    //   COLLECTION (Physical)
-	0x09, 0x30,                    //     USAGE (X)
-	0x09, 0x31,                    //     USAGE (Y)
-	0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
-	0x26, 0xff, 0x00,              //     LOGICAL_MAXIMUM (255)
-	0x75, 0x08,                    //   REPORT_SIZE (8)
-	0x95, 0x02,                    //   REPORT_COUNT (2)
-	0x81, 0x02,                    //   INPUT (Data,Var,Abs)
-	0xc0,                          // END_COLLECTION
-	0x05, 0x09,                    // USAGE_PAGE (Button)
-	0x19, 0x01,                    //   USAGE_MINIMUM (Button 1)
-	0x29, 0x08,                    //   USAGE_MAXIMUM (Button 8)
-	0x15, 0x00,                    //   LOGICAL_MINIMUM (0)
-	0x25, 0x01,                    //   LOGICAL_MAXIMUM (1)
-	0x75, 0x01,                    // REPORT_SIZE (1)
-	0x95, 0x08,                    // REPORT_COUNT (8)
-	0x81, 0x02,                    // INPUT (Data,Var,Abs)
-	0xc0                           // END_COLLECTION
+	
+	0xa1, 0x01,                    //	COLLECTION (Application)
+	
+	0x09, 0x01,                    //		USAGE (Pointer)
+	0xa1, 0x00,                    //		COLLECTION (Physical)
+	0x09, 0x30,                    //			USAGE (X)
+	0x09, 0x31,                    //			USAGE (Y)
+	0x15, 0x00,                    //			LOGICAL_MINIMUM (0)
+	0x26, 0xff, 0x00,              //			LOGICAL_MAXIMUM (255)
+	0x75, 0x08,                    //			REPORT_SIZE (8)
+	0x95, 0x02,                    //			REPORT_COUNT (2)
+	0x81, 0x02,                    //			INPUT (Data,Var,Abs)
+	0xc0,                          //		END_COLLECTION
+	
+	0x05, 0x09,                    //		USAGE_PAGE (Button)
+	0x19, 0x01,                    //		USAGE_MINIMUM (Button 1)
+	0x29, 0x08,                    //		USAGE_MAXIMUM (Button 8)
+	0x15, 0x00,                    //		LOGICAL_MINIMUM (0)
+	0x25, 0x01,                    //		LOGICAL_MAXIMUM (1)
+	0x75, 0x01,                    //		REPORT_SIZE (1)
+	0x95, 0x08,                    //		REPORT_COUNT (8)
+	0x81, 0x02,                    //		INPUT (Data,Var,Abs)
+	
+	0xc0                           //	END_COLLECTION
 };
-
-/*
-const PROGMEM char usbHidReportDescriptor[42] = {
-	                    // USAGE_PAGE (Generic Desktop)
-	                    // USAGE (Game Pad)
-	                    // COLLECTION (Application)
-	                    //   USAGE (Pointer)
-	                    //   COLLECTION (Physical)
-	                    //     USAGE (X)
-	                    //     USAGE (Y)
-	                    //     LOGICAL_MINIMUM (0)
-	0x25, 0x02,                    //     LOGICAL_MAXIMUM (2)
-	0x75, 0x02,                    //     REPORT_SIZE (2)
-	                    //     REPORT_COUNT (2)
-	                    //     INPUT (Data,Var,Abs)
-	                          //   END_COLLECTION
-	                    //   USAGE_PAGE (Button)
-	                    //   USAGE_MINIMUM (Button 1)
-	0x29, 0x04,                    //   USAGE_MAXIMUM (Button 4)
-	                    //   LOGICAL_MINIMUM (0)
-	                    //   LOGICAL_MAXIMUM (1)
-	                    //   REPORT_SIZE (1)
-	0x95, 0x04,                    //   REPORT_COUNT (4)
-	                    //   INPUT (Data,Var,Abs)
-	                           // END_COLLECTION
-};
-*/
