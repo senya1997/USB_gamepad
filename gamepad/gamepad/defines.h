@@ -25,4 +25,4 @@
 	#define LED1 6
 	
 #define REPORT_SIZE 3
-#define INIT_IDLE_TIME 120 // 100 <=> 400 ms
+#define INIT_IDLE_TIME 120 /* 100 <=> 400 ms */

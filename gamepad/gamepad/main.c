@@ -18,19 +18,19 @@ USB_PUBLIC uchar usbFunctionDescriptor(usbRequest_t * rq)
 		switch(rq -> wValue.bytes[1])
 		{
 			case USBDESCR_DEVICE:
-				usbMsgPtr = (usbMsgPtr_t)desc_dev;
+				usbMsgPtr = (int)desc_dev;
 				return sizeof(desc_dev);
 			case USBDESCR_CONFIG:
-				usbMsgPtr = (usbMsgPtr_t)desc_conf;
+				usbMsgPtr = (int)desc_conf;
 				return sizeof(desc_conf);
 			case USBDESCR_STRING:
 				if(rq -> wValue.bytes[0] == 2) // device name
 				{
-					usbMsgPtr = (usbMsgPtr_t)desc_prod_str;
+					usbMsgPtr = (int)desc_prod_str;
 					return sizeof(desc_prod_str);
 				}
 			case USBDESCR_HID_REPORT:
-				usbMsgPtr = (usbMsgPtr_t)desc_sega_hidreport;
+				usbMsgPtr = (int)desc_sega_hidreport;
 				return sizeof(desc_sega_hidreport);
 		}
 	}
@@ -47,18 +47,26 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 		switch (rq -> bRequest)
 		{
 			case USBRQ_HID_GET_REPORT:
-				usbMsgPtr = (usbMsgPtr_t)report_buf;
+				usbMsgPtr = (int)report_buf;
 				return REPORT_SIZE;
 			case USBRQ_HID_GET_IDLE:
-				usbMsgPtr = (usbMsgPtr_t)delay_idle;
-				return 1;
-			case USBRQ_HID_SET_IDLE: return USB_NO_MSG; // call "usbFunctionWrite" ("OUT" token)
+				if (rq -> wValue.bytes[0] > 0)
+				{
+					usbMsgPtr = (int)&delay_idle;
+					return 1;
+				}
+				break;
+			//case USBRQ_HID_SET_IDLE: return USB_NO_MSG; // call "usbFunctionWrite" ("OUT" token)
+			case USBRQ_HID_SET_IDLE:
+				if(rq -> wValue.bytes[1] != 0) delay_idle = rq -> wValue.bytes[1];
+				else delay_idle = 3; // when the upper byte of "wValue" = 0, the duration is indefinite
 		}
 	}
 	
 	return 0; // ignore data from host ("OUT" token)
 }
 
+/*
 USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 {
 	usbRequest_t *rq = (usbRequest_t*)data;
@@ -68,6 +76,7 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 	
 	return 1;
 }
+*/
 
 /*
 void setReport()
@@ -118,7 +127,7 @@ void main(void)
 		{
 			if(usbInterruptIsReady())
 			{
-				usbSetInterrupt(report_buf, REPORT_SIZE);
+				//usbSetInterrupt(report_buf, REPORT_SIZE);
 				TIMSK0 = (1 << OCIE0A);
 				cnt_idle = 0;
 				
@@ -126,6 +135,7 @@ void main(void)
 			}
 		}
 		
+		_delay_ms(10);
 		PORT_LED ^= (1 << LED0);
     }
 }

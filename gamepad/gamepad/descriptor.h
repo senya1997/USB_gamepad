@@ -1,7 +1,7 @@
 #include <avr/pgmspace.h>
 
 #define UNUSED 0x00
-#define TOTAL_LEN_DESCR (18 + 7 * 1 + 9)
+#define TOTAL_LEN_DESCR (18 + 7 + 9)
 
 const int PROGMEM desc_prod_str[] = {
 	USB_STRING_DESCRIPTOR_HEADER(10),
@@ -59,7 +59,7 @@ const uchar PROGMEM desc_conf[] = {
     0x00,					/* target country code (if needed) */
     0x01,					/* number of HID Report (or other HID class) Descriptor infos to follow */
     0x22,					/* descriptor type: report */
-    USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH, 0x00,
+    0x43, 0x00, // ???
 	
 				/***************** Bulk IN endpoint descriptors *****************/
 	
@@ -71,7 +71,7 @@ const uchar PROGMEM desc_conf[] = {
     USB_CFG_INTR_POLL_INTERVAL,
 };
 
-const char desc_sega_hidreport[] PROGMEM = {
+const uchar PROGMEM desc_sega_hidreport[] = {
 	0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
 	0x09, 0x05,                    // USAGE (Game Pad)
 	
