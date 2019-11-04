@@ -220,8 +220,9 @@ section at the end of this file).
 
 /* -------------------------- Device Description --------------------------- */
 
-#define  USB_CFG_VENDOR_ID       0xc0, 0x16 /* = 0x16c0 = 5824 = voti.nl */
-//#define  USB_CFG_VENDOR_ID       0x81, 0x17 /* = 0x16c0 = 5824 = voti.nl */
+//#define  USB_CFG_VENDOR_ID       0xc0, 0x16 /* = 0x16c0 = 5824 = voti.nl */
+//#define  USB_CFG_VENDOR_ID       0x81, 0x17
+#define  USB_CFG_VENDOR_ID       0xea, 0x1d
 /* USB vendor ID for the device, low byte first. If you have registered your
  * own Vendor ID, define it here. Otherwise you may use one of obdev's free
  * shared VID/PID pairs. Be sure to read USB-IDs-for-free.txt for rules!
@@ -230,10 +231,11 @@ section at the end of this file).
  * with libusb: 0x16c0/0x5dc.  Use this VID/PID pair ONLY if you understand
  * the implications!
  */
-//#define  USB_CFG_DEVICE_ID       0xdf, 0x05 /* For generic HID class devices (which are joysticks) */
-#define  USB_CFG_DEVICE_ID       0xd9, 0x27 /* For generic HID class devices (which are joysticks) */
+//#define  USB_CFG_DEVICE_ID       0xdf, 0x05 /* For generic HID class devices (which are joysticks) */.
+//#define  USB_CFG_DEVICE_ID       0xd9, 0x27 /* For generic HID class devices (which are joysticks) */
 //#define  USB_CFG_DEVICE_ID       0xdc, 0x27 /* For USB Joysticks */
 //#define  USB_CFG_DEVICE_ID       0x96, 0x0A
+#define  USB_CFG_DEVICE_ID       0x07, 0x10
 /* This is the ID of the product, low byte first. It is interpreted in the
  * scope of the vendor ID. If you have registered your own VID with usb.org
  * or if you have licensed a PID from somebody else, define it here. Otherwise
@@ -285,7 +287,7 @@ section at the end of this file).
  * HID class is 3, no subclass and protocol required (but may be useful!)
  * CDC class is 2, use subclass 2 and protocol 1 for ACM
  */
-#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    0 /* total length of report descriptor */
+#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    43 /* total length of report descriptor */
 /* Define this to the length of the HID report descriptor, if you implement
  * an HID device. Otherwise don't define it or define it to 0.
  * If you use this define, you must add a PROGMEM character array named
@@ -358,7 +360,7 @@ section at the end of this file).
 #define USB_CFG_DESCR_PROPS_STRING_PRODUCT          USB_PROP_IS_DYNAMIC
 #define USB_CFG_DESCR_PROPS_STRING_SERIAL_NUMBER    0 // ???
 #define USB_CFG_DESCR_PROPS_HID                     0
-#define USB_CFG_DESCR_PROPS_HID_REPORT              USB_PROP_IS_DYNAMIC
+#define USB_CFG_DESCR_PROPS_HID_REPORT              0
 #define USB_CFG_DESCR_PROPS_UNKNOWN                 0
 
 
