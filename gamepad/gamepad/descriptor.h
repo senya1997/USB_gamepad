@@ -1,7 +1,7 @@
 #include <avr/pgmspace.h>
 
 #define UNUSED 0x00
-#define TOTAL_LEN_DESCR (18 + 7 + 9)
+#define TOTAL_LEN_DESCR (9 + 9 + 9 + 7)
 
 const int PROGMEM desc_prod_str[] = {
 	USB_STRING_DESCRIPTOR_HEADER(10),
@@ -59,7 +59,7 @@ const uchar PROGMEM desc_conf[] = {
     0x00,					/* target country code (if needed) */
     0x01,					/* number of HID Report (or other HID class) Descriptor infos to follow */
     0x22,					/* descriptor type: report */
-    USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH, 0x00, // ???
+    USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH, 0x00,
 	
 				/***************** Bulk IN endpoint descriptors *****************/
 	
