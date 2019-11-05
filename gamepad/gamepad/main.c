@@ -118,19 +118,26 @@ ISR(TIMER2_COMPA_vect)
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
 		sei();
 	
-		if(state < 8) 
+		if(state < 7) 
 		{
 			PORT_SEGA_AUX ^= (1 << SEGA_SEL);
 		
 			flag_ch_gp = 1;
 			state++;
 		}
+		else if(state == 8)
+		{ // after delay between "packets":
+			OCR2A = PER_POLL_GP;
+			flag_ch_gp = 1;
+			state = 0;
+		}
 		else
-		{
+		{ // after "packet":
+			PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
 			OCR2A = DELAY_BTW_POLL;
 		
 			flag_report = 1;
-			state = 0;
+			state = 8;
 		}
 	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
@@ -144,6 +151,7 @@ void main(void)
 	
 // gamepads:
 	DDR_SEGA_AUX = (1 << SEGA_SEL);
+	PORT_SEGA_AUX &= ~(1 << SEGA_SEL); // necessarily down to zero SEL signal on start
 	
 	PORT_SEGA = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
 				(1 << SEGA_A_B) | (1 << SEGA_ST_C); // add pull up (mb not required)
@@ -168,8 +176,11 @@ void main(void)
 // full reset timers:
 	TCNT0 = 0;
 	TCNT2 = 0;
+	
+	// reset interrupt timers flags:
 	TIFR0 |= (1 << OCF0A);
-	TIFR2 |= (1 << OCF2A); // reset interrupt timers flags
+	TIFR2 |= (1 << OCF2A); 
+	
 	GTCCR |= (1 << PSRASY); // reset presc timers
 	
 	sei();

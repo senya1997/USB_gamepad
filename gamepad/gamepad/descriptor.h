@@ -25,7 +25,7 @@ const uchar PROGMEM desc_dev[] = {
 	0x01,					/* number of configurations */
 };
 
-const char PROGMEM usbDescriptorConfiguration[] = { 0 };
+const char PROGMEM usbDescriptorConfiguration[] = { 0 }; // dummy
 const uchar PROGMEM desc_conf[] = {
 	
 				/****************** Configuration descriptor ******************/
