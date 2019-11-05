@@ -166,6 +166,7 @@ void main(void)
 	
 	TCCR2A = (1 << WGM21); // CTC mode with OCRA
 	TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
+	//TCCR2B = (1 << CS20) | (1 << CS21) | (1 << CS22);
 	OCR2A = PER_POLL_GP;
 	
 	TIMSK0 = (1 << OCIE0A);
@@ -209,24 +210,24 @@ void main(void)
 		if(flag_report) // build report:
 		{ 
 			temp = (~gp_state_buf[2]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-			report_buf[2] = temp << 2;
+			report_buf[SEGA_BUT_NUM] = temp << 2;
 			
 			temp = (~gp_state_buf[3]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-			report_buf[2] |= temp;
+			report_buf[SEGA_BUT_NUM] |= temp;
 			
 			temp = (~gp_state_buf[5]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
 										 (1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
-			report_buf[2] |= temp;
+			report_buf[SEGA_BUT_NUM] |= temp;
 			
 			temp = (~gp_state_buf[3]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y));	// 0b00000011
-				if(temp == (1 << SEGA_UP_Z)) report_buf[1] = 0xFF;
-				else if(temp == (1 << SEGA_DW_Y)) report_buf[1] = 0x00;
-				else report_buf[1] = 0x7F;
+				if(temp == (1 << SEGA_UP_Z)) report_buf[SEGA_OY_NUM] = 0x00;
+				else if(temp == (1 << SEGA_DW_Y)) report_buf[SEGA_OY_NUM] = 0xFF;
+				else report_buf[SEGA_OY_NUM] = 0x7F;
 			
 			temp = (~gp_state_buf[3]) & ((1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001100
-				if(temp == (1 << SEGA_RG_MD)) report_buf[0] = 0xFF;
-				else if(temp == (1 << SEGA_LF_X)) report_buf[0] = 0x00;
-				else report_buf[0] = 0x7F;
+				if(temp == (1 << SEGA_RG_MD)) report_buf[SEGA_OX_NUM] = 0xFF;
+				else if(temp == (1 << SEGA_LF_X)) report_buf[SEGA_OX_NUM] = 0x00;
+				else report_buf[SEGA_OX_NUM] = 0x7F;
 			
 			flag_report = 0;
 		}

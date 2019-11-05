@@ -29,6 +29,11 @@
 	#define SEGA_PIN_MASK 0b00111111 /* e.g. if SEGA buttons PIN match "PORTB 0..6" => MASK = 0b00111111, */
 									/* because last 2 bits on PORTB - TOSC 1,2 */
 
+	// index number in the package HID report (define by HID report):
+	#define SEGA_OX_NUM		0
+	#define SEGA_OY_NUM		1
+	#define SEGA_BUT_NUM	2
+
 // PS:
 	#define PORT_PS PORTC
 	#define DDR_PS DDRC
@@ -42,10 +47,10 @@
 
 #define STEP_IDLE_CONF	250	/* 4 ms step for calculate idle time in cnt of timer 0 */
 
-#define PER_POLL_GP		62	/* period of SEL signal for gamepad in cnt of timer 2  */
-#define DELAY_BTW_POLL	250	/* delay between packets 0..7 of SEL signal in cnt of timer 2, */
+#define PER_POLL_GP		30	/* period of SEL signal for gamepad in cnt of timer 2  */
+#define DELAY_BTW_POLL	255	/* delay between packets 0..7 of SEL signal in cnt of timer 2, */
 							/* for reset internal cnt in gamepad (minimum required 1.6 ms) */
-#define DELAY_BEF_POLL	7	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 */
+#define DELAY_BEF_POLL	10	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 */
 
 #define REPORT_SIZE		3	/* defined by HID report */
 #define INIT_IDLE_TIME	4	/* 100 <=> 400 ms in cnt of timer 0 */
