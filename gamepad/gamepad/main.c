@@ -7,7 +7,7 @@
 #include "usbdrv/usbdrv.h"
 #include "descriptor.h"
 
-uchar report_buf[3] = {0x00, 0x00, 0x00};
+uchar report_buf[3] = {0x7F, 0x7F, 0x00}; // OX, OY, buttons
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
@@ -26,8 +26,9 @@ uchar state = 0; // 0..7 states
 	| H  |UP |DW |LF |RG |B  |C  |
 */
 
-uchar flag_ch_gp = 1; // flag shows that required save buttons state
+uchar flag_ch_gp = 1; // shows that required save buttons state
 uchar flag_report = 0;
+uchar flag_idle = 0; // shows that idle time is over and can send report
 
 USB_PUBLIC uchar usbFunctionDescriptor(usbRequest_t * rq)
 {
@@ -76,6 +77,8 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 				break;
 			//case USBRQ_HID_SET_IDLE: return USB_NO_MSG; // call "usbFunctionWrite" ("OUT" token)
 			case USBRQ_HID_SET_IDLE:
+				// mb required reset "cnt_idle" and enable interrupt timer 0, cause 
+				// "flag_idle" can be set during "delay_idle" change in large way
 				if(rq -> wValue.bytes[1] != 0) delay_idle = rq -> wValue.bytes[1];
 				else delay_idle = 3; // when the upper byte of "wValue" = 0, the duration is indefinite
 		}
@@ -98,30 +101,38 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 
 ISR(TIMER0_COMPA_vect)
 {
-	sei();
-	
-	if(cnt_idle < delay_idle) cnt_idle++;
-	else TIMSK0 &= ~(1 << OCIE0A);
+	TIMSK0 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
+		sei();
+		
+		if(cnt_idle < delay_idle) cnt_idle++;
+		else
+		{
+			TIMSK0 &= ~(1 << OCIE0A);
+			flag_idle = 1;
+		}
+	TIMSK0 |= (1 << OCIE2A); // "sei"
 }
 
 ISR(TIMER2_COMPA_vect)
 {
-	sei();
+	TIMSK0 &= ~(1 << OCIE0A); // "cli"
+		sei();
 	
-	if(state < 8) 
-	{
-		PORT_SEGA ^= (1 << SEGA_SEL);
+		if(state < 8) 
+		{
+			PORT_SEGA_AUX ^= (1 << SEGA_SEL);
 		
-		flag_ch_gp = 1;
-		state++;
-	}
-	else
-	{
-		OCR2A = DELAY_BTW_POLL;
+			flag_ch_gp = 1;
+			state++;
+		}
+		else
+		{
+			OCR2A = DELAY_BTW_POLL;
 		
-		flag_report = 1;
-		state = 0;
-	}
+			flag_report = 1;
+			state = 0;
+		}
+	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
 
 void main(void)
@@ -132,9 +143,10 @@ void main(void)
 	DDR_LED = (1 << LED0) | (1 << LED1);
 	
 // gamepads:
-	DDR_SEGA = (1 << SEGA_SEL);
+	DDR_SEGA_AUX = (1 << SEGA_SEL);
+	
 	PORT_SEGA = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
-	(1 << SEGA_A_B) | (1 << SEGA_ST_C);
+				(1 << SEGA_A_B) | (1 << SEGA_ST_C); // add pull up (mb not required)
 	
 	//DDR_PS =
 	//PORT_PS =
@@ -153,6 +165,9 @@ void main(void)
 		usbDeviceConnect();
 		usbInit();
 	
+// full reset timers:
+	TCNT0 = 0;
+	TCNT2 = 0;
 	TIFR0 |= (1 << OCF0A);
 	TIFR2 |= (1 << OCF2A); // reset interrupt timers flags
 	GTCCR |= (1 << PSRASY); // reset presc timers
@@ -162,43 +177,52 @@ void main(void)
     {
 		usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
 		
-		if((cnt_idle >= delay_idle) & (flag_report))
+		if(flag_idle) // send report immediately after "idle" time has passed:
 		{
 			if(usbInterruptIsReady())
 			{
-				temp = (~gp_state_buf[2]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-				report_buf[2] = temp << 2;
-				
-				temp = (~gp_state_buf[3]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-				report_buf[2] |= temp;
-				
-				temp = (~gp_state_buf[5]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) | 
-											 (1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
-				report_buf[2] |= temp;
-				
-				temp = (~gp_state_buf[3]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y));	// 0b00000011
-				if(temp == (1 << SEGA_UP_Z)) report_buf[1] = 0xFF;
-				else if(temp == (1 << SEGA_DW_Y)) report_buf[1] = 0x00;
-				else report_buf[1] = 0x7F;
-				
-				temp = (~gp_state_buf[3]) & ((1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001100
-				if(temp == (1 << SEGA_RG_MD)) report_buf[0] = 0xFF;
-				else if(temp == (1 << SEGA_LF_X)) report_buf[0] = 0x00;
-				else report_buf[0] = 0x7F;
-				
 				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 22.44 us
-				TIMSK0 = (1 << OCIE0A) | (1 << OCIE2A);
 				
 				cnt_idle = 0;
-				flag_report = 0;
+				flag_idle = 0;
 				
 				PORT_LED ^= (1 << LED1);
+				
+			// full reset timer 0 then enable interrupt:
+				TCNT0 = 0;
+				TIFR0 |= (1 << OCF0A); 
+				TIMSK0 |= (1 << OCIE0A);
 			}
 		}
 		
-		if(flag_ch_gp & (TCNT2 >= DELAY_BEF_POLL))
+		if(flag_report) // build report:
+		{ 
+			temp = (~gp_state_buf[2]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
+			report_buf[2] = temp << 2;
+			
+			temp = (~gp_state_buf[3]) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
+			report_buf[2] |= temp;
+			
+			temp = (~gp_state_buf[5]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
+										 (1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
+			report_buf[2] |= temp;
+			
+			temp = (~gp_state_buf[3]) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y));	// 0b00000011
+				if(temp == (1 << SEGA_UP_Z)) report_buf[1] = 0xFF;
+				else if(temp == (1 << SEGA_DW_Y)) report_buf[1] = 0x00;
+				else report_buf[1] = 0x7F;
+			
+			temp = (~gp_state_buf[3]) & ((1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001100
+				if(temp == (1 << SEGA_RG_MD)) report_buf[0] = 0xFF;
+				else if(temp == (1 << SEGA_LF_X)) report_buf[0] = 0x00;
+				else report_buf[0] = 0x7F;
+			
+			flag_report = 0;
+		}
+		
+		if(flag_ch_gp & (TCNT2 >= DELAY_BEF_POLL)) // upd gamepad status buffer:
 		{
-			gp_state_buf[state] = PIN_SEGA & 0b00111111; // last 2 bits - TOSC 1,2
+			gp_state_buf[state] = PIN_SEGA & SEGA_PIN_MASK;
 			flag_ch_gp = 0;
 		}
     }
