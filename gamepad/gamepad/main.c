@@ -101,7 +101,7 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 
 ISR(TIMER0_COMPA_vect)
 {
-	TIMSK0 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
+	TIMSK2 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
 		sei();
 		
 		if(cnt_idle < delay_idle) cnt_idle++;
@@ -110,7 +110,7 @@ ISR(TIMER0_COMPA_vect)
 			TIMSK0 &= ~(1 << OCIE0A);
 			flag_idle = 1;
 		}
-	TIMSK0 |= (1 << OCIE2A); // "sei"
+	TIMSK2 |= (1 << OCIE2A); // "sei"
 }
 
 ISR(TIMER2_COMPA_vect)
@@ -168,8 +168,8 @@ void main(void)
 	TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
 	OCR2A = PER_POLL_GP;
 	
-	TIMSK0 = (1 << OCIE0A) | (1 << OCIE2A);
-	
+	TIMSK0 = (1 << OCIE0A);
+	TIMSK2 = (1 << OCIE2A);
 		usbDeviceConnect();
 		usbInit();
 	
@@ -192,7 +192,7 @@ void main(void)
 		{
 			if(usbInterruptIsReady())
 			{
-				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 22.44 us
+				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 17.88 us
 				
 				cnt_idle = 0;
 				flag_idle = 0;
