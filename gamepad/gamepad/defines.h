@@ -3,7 +3,7 @@
 // for descriptors:
 	#define UNUSED 0x00
 	#define TOTAL_LEN_DESCR (9 + 9 + 9 + 7)
-	#define REPORT_SIZE	6 /* defined by HID report */
+	#define REPORT_SIZE	3 /* defined by HID report */
 
 // SEGA:
 	#define PORT_SEGA1 PORTB // 1st player
@@ -37,15 +37,7 @@
 
 	#define SEGA_PIN_MASK 0b00111111 /* e.g. if SEGA buttons PIN match "PORTB 0..6" => MASK = 0b00111111, */
 									/* because last 2 bits on PORTB - TOSC 1,2 */
-
-	// byte order in the package HID report (define by HID report):
-	#define SEGA_OX_NUM		0
-	#define SEGA_OY_NUM		1
-	#define SEGA_RX_NUM		2
-	#define SEGA_RY_NUM		3
-	#define SEGA_BUT1_NUM	4
-	#define SEGA_BUT2_NUM	5
-
+									
 // PS:
 	#define PORT_PS PORTC
 	#define DDR_PS DDRC

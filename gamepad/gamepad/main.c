@@ -7,7 +7,7 @@
 #include "usbdrv/usbdrv.h"
 #include "descriptor.h"
 
-uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00}; // OX, OY, RX, RY, but 1st plr, but 2nd plr
+uchar report_buf[REPORT_SIZE] = {0x00, 0x00, 0x00}; // ???
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
@@ -16,15 +16,22 @@ uchar state = 0; // 0..7 states
 /*  _____________________________
 	|Sel |D0 |D1 |D2 |D3 |D4 |D5 |
 	+----+---+---+---+---+---+---+
-	| L  |UP |DW |LO |LO |A  |ST |
-	| H  |UP |DW |LF |RG |B  |C  |
-	| L  |UP |DW |LO |LO |A  |ST |
-	| H  |UP |DW |LF |RG |B  |C  |
-	| L  |LO |LO |LO |LO |A  |ST |
-	| H  |Z  |Y  |X  |MD |HI |HI |
-	| L  |HI |HI |HI |HI |A  |ST |
-	| H  |UP |DW |LF |RG |B  |C  |
+0:	| L  |UP |DW |LO |LO |A  |ST |
+1:	| H  |UP |DW |LF |RG |B  |C  |
+2:	| L  |UP |DW |LO |LO |A  |ST |
+3:	| H  |UP |DW |LF |RG |B  |C  |
+4:	| L  |LO |LO |LO |LO |A  |ST |
+5:	| H  |Z  |Y  |X  |MD |HI |HI |
+6:	| L  |HI |HI |HI |HI |A  |ST |
+7:	| H  |UP |DW |LF |RG |B  |C  |
 */
+
+/************************************************************************/
+/* approx timing:  |    500us     |2ms|  500us  :  half of period time  */
+/*		   state:	0 1 2 3 ... 7 | 8 | 0 1 2 3 ...						*/
+/*					  _   _	    _	      _   _							*/
+/*		SEL:	 ____/ \_/ \_... \_______/ \_/ \_...					*/
+/************************************************************************/
 
 uchar flag_ch_gp = 1; // shows that required save buttons state
 uchar flag_report = 0;
@@ -98,29 +105,19 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 
 uchar *updReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
 {
-	static uchar int_report_buf[3]; // internal report buf: on exit of function - OX[0], OY[1], buttons[2]
+	static uchar int_report_buf[2]; // internal report buf - 0 byte: ST,A,C,B,R,L,D,U; 1 byte: 0,0,0,0,MD,X,Y,Z
 	uchar temp;
 	
-			// 2,3,5 - SEL number at which data were polling in protocol (see "state" comment)
+	// 2,3,5 - SEL number at which data were polling in protocol (see "state" comment)
 	temp = (~(*(gp_state_ptr + 2 + offset))) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-	int_report_buf[2] = temp << 2;
+	int_report_buf[0] = temp << 2;
 
-	temp = (~(*(gp_state_ptr + 3 + offset))) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-	int_report_buf[2] |= temp;
+	temp = (~(*(gp_state_ptr + 3 + offset))) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
+												(1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00111111
+	int_report_buf[0] |= temp;
 
-	temp = (~(*(gp_state_ptr + 5 + offset))) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
-												(1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
-	int_report_buf[2] |= temp;
-
-	temp = (~(*(gp_state_ptr + 3 + offset))) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y));	// 0b00000011
-		if(temp == (1 << SEGA_UP_Z)) int_report_buf[1] = 0x00;
-		else if(temp == (1 << SEGA_DW_Y)) int_report_buf[1] = 0xFF;
-		else int_report_buf[1] = 0x7F;
-
-	temp = (~(*(gp_state_ptr + 3 + offset))) & ((1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001100
-		if(temp == (1 << SEGA_RG_MD)) int_report_buf[0] = 0xFF;
-		else if(temp == (1 << SEGA_LF_X)) int_report_buf[0] = 0x00;
-		else int_report_buf[0] = 0x7F;
+	temp = (~(*(gp_state_ptr + 5 + offset))) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) | (1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
+	int_report_buf[1] = temp;
 	
 	return int_report_buf; // return pointer on massive
 }
@@ -225,7 +222,7 @@ void main(void)
 		{
 			if(usbInterruptIsReady())
 			{
-				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~  us
+				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 18.06 us
 				
 				cnt_idle = 0;
 				flag_idle = 0;
@@ -244,12 +241,11 @@ void main(void)
 			report_buf_ptr = updReportBuf(0, (uchar *)gp_state_buf); // var that defining the array is also a pointer to it
 				report_buf[0] = *report_buf_ptr;
 				report_buf[1] = *(report_buf_ptr + 1);
-				report_buf[4] = *(report_buf_ptr + 2);
+				report_buf[1] <<= 4;
 				
 			report_buf_ptr = updReportBuf(8, (uchar *)gp_state_buf);
+				report_buf[1] |= *(report_buf_ptr + 1);
 				report_buf[2] = *report_buf_ptr;
-				report_buf[3] = *(report_buf_ptr + 1);
-				report_buf[5] = *(report_buf_ptr + 2);
 			
 			flag_report = 0;
 		}
