@@ -1,8 +1,5 @@
 #include <avr/pgmspace.h>
 
-#define UNUSED 0x00
-#define TOTAL_LEN_DESCR (9 + 9 + 9 + 7)
-
 const int PROGMEM desc_prod_str[] = {
 	USB_STRING_DESCRIPTOR_HEADER(10),
 	's', 's', '_', 'g', 'a', 'm', 'e', 'p', 'a', 'd'
@@ -71,60 +68,35 @@ const uchar PROGMEM desc_conf[] = {
     USB_CFG_INTR_POLL_INTERVAL,
 };
 
-const uchar PROGMEM desc_sega_hidreport[] = {
+// CAUTION: when changing report descriptor do not remember change "REPORT SIZE" define according with new form report packet
+//			and byte order defines
+const char PROGMEM usbDescriptorHidReport[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = {
 	0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
 	0x09, 0x05,                    // USAGE (Game Pad)
 	
-	0xa1, 0x01,                    //	COLLECTION (Application)
+	0xA1, 0x01,                    //	COLLECTION (Application)
 	
 	0x09, 0x01,                    //		USAGE (Pointer)
-	0xa1, 0x00,                    //		COLLECTION (Physical)
+	0xA1, 0x00,                    //		COLLECTION (Physical)
 	0x09, 0x30,                    //			USAGE (X)
 	0x09, 0x31,                    //			USAGE (Y)
+	0x09, 0x33,                    //			USAGE (RX) - 2nd player
+	0x09, 0x34,                    //			USAGE (RY)
 	0x15, 0x00,                    //			LOGICAL_MINIMUM (0)
-	0x26, 0xff, 0x00,              //			LOGICAL_MAXIMUM (255)
+	0x26, 0xFF, 0x00,              //			LOGICAL_MAXIMUM (255)
 	0x75, 0x08,                    //			REPORT_SIZE (8)
-	0x95, 0x02,                    //			REPORT_COUNT (2)
+	0x95, 0x04,                    //			REPORT_COUNT (4)
 	0x81, 0x02,                    //			INPUT (Data,Var,Abs)
-	0xc0,                          //		END_COLLECTION
+	0xC0,                          //		END_COLLECTION
 	
 	0x05, 0x09,                    //		USAGE_PAGE (Button)
 	0x19, 0x01,                    //		USAGE_MINIMUM (Button 1)
-	0x29, 0x08,                    //		USAGE_MAXIMUM (Button 8)
+	0x29, 0x10,                    //		USAGE_MAXIMUM (Button 16)
 	0x15, 0x00,                    //		LOGICAL_MINIMUM (0)
 	0x25, 0x01,                    //		LOGICAL_MAXIMUM (1)
 	0x75, 0x01,                    //		REPORT_SIZE (1)
-	0x95, 0x08,                    //		REPORT_COUNT (8)
+	0x95, 0x10,                    //		REPORT_COUNT (16)
 	0x81, 0x02,                    //		INPUT (Data,Var,Abs)
 	
-	0xc0                           //	END_COLLECTION
-};
-
-const char PROGMEM usbDescriptorHidReport[43] = {
-	0x05, 0x01,                    // USAGE_PAGE (Generic Desktop)
-	0x09, 0x05,                    // USAGE (Game Pad)
-	
-	0xa1, 0x01,                    //	COLLECTION (Application)
-	
-	0x09, 0x01,                    //		USAGE (Pointer)
-	0xa1, 0x00,                    //		COLLECTION (Physical)
-	0x09, 0x30,                    //			USAGE (X)
-	0x09, 0x31,                    //			USAGE (Y)
-	0x15, 0x00,                    //			LOGICAL_MINIMUM (0)
-	0x26, 0xff, 0x00,              //			LOGICAL_MAXIMUM (255)
-	0x75, 0x08,                    //			REPORT_SIZE (8)
-	0x95, 0x02,                    //			REPORT_COUNT (2)
-	0x81, 0x02,                    //			INPUT (Data,Var,Abs)
-	0xc0,                          //		END_COLLECTION
-	
-	0x05, 0x09,                    //		USAGE_PAGE (Button)
-	0x19, 0x01,                    //		USAGE_MINIMUM (Button 1)
-	0x29, 0x08,                    //		USAGE_MAXIMUM (Button 8)
-	0x15, 0x00,                    //		LOGICAL_MINIMUM (0)
-	0x25, 0x01,                    //		LOGICAL_MAXIMUM (1)
-	0x75, 0x01,                    //		REPORT_SIZE (1)
-	0x95, 0x08,                    //		REPORT_COUNT (8)
-	0x81, 0x02,                    //		INPUT (Data,Var,Abs)
-	
-	0xc0                           //	END_COLLECTION
+	0xC0                           //	END_COLLECTION
 };
