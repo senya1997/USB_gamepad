@@ -7,7 +7,15 @@
 #include "usbdrv/usbdrv.h"
 #include "descriptor.h"
 
-uchar report_buf[REPORT_SIZE] = {0x00, 0x00, 0x00}; // ???
+#ifdef DEBUG
+	#warning "DEBUG is enabled"
+#endif
+					   //				    1st pl: 7 6 5 4 3 2 1 0;       1st pl  | 2nd pl			    2ns pl
+#ifdef DUMMY_AXIS_SEGA // dummy OX, OY, next byte: ST,A,C,B,R,L,D,U; next: MD,X,Y,Z,MD,X,Y,Z; next: ST,A,C,B,R,L,D,U;
+	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x00, 0x00, 0x00}; 
+#else
+	uchar report_buf[REPORT_SIZE] = {0x00, 0x00, 0x00};
+#endif
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
@@ -79,29 +87,29 @@ USB_PUBLIC uchar usbFunctionSetup(uchar data[8])
 					return 1;
 				}
 				break;
-			//case USBRQ_HID_SET_IDLE: return USB_NO_MSG; // call "usbFunctionWrite" ("OUT" token)
+			case USBRQ_HID_SET_IDLE: return USB_NO_MSG; // call "usbFunctionWrite" ("OUT" token)
+			/*
 			case USBRQ_HID_SET_IDLE:
 				// mb required reset "cnt_idle" and enable interrupt timer 0, cause 
 				// "flag_idle" can be set during "delay_idle" change in large way
 				if(rq -> wValue.bytes[1] != 0) delay_idle = rq -> wValue.bytes[1];
-				else delay_idle = 3; // when the upper byte of "wValue" = 0, the duration is indefinite
+				else delay_idle = INIT_IDLE_TIME; // when the upper byte of "wValue" = 0, the duration is indefinite
+				*/
 		}
 	}
 	
 	return 0; // ignore data from host ("OUT" token)
 }
 
-/*
 USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 {
 	usbRequest_t *rq = (usbRequest_t*)data;
 	
 	if(rq -> wValue.bytes[1] != 0) delay_idle = rq -> wValue.bytes[1];
-	else delay_idle = 0; // when the upper byte of "wValue" = 0, the duration is indefinite
+	else delay_idle = INIT_IDLE_TIME; // when the upper byte of "wValue" = 0, the duration is indefinite
 	
 	return 1;
 }
-*/
 
 uchar *updReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
 {
@@ -126,7 +134,7 @@ void hardwareInit()
 {
 	DDR_LED = (1 << LED0) | (1 << LED1);
 		
-	// gamepads:
+// gamepads:
 	DDR_SEGA_AUX = (1 << SEGA_SEL);
 	PORT_SEGA_AUX &= ~(1 << SEGA_SEL); // necessarily down to zero SEL signal on start
 		
@@ -138,7 +146,7 @@ void hardwareInit()
 	//DDR_PS =
 	//PORT_PS =
 		
-	// timers:
+// timers:
 	TCCR0A = (1 << WGM01); // CTC mode with OCRA
 	TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
 	OCR0A = STEP_IDLE_CONF;
@@ -200,8 +208,11 @@ void main(void)
 	uchar *report_buf_ptr;
 
 	hardwareInit();
-	usbDeviceConnect();
-	usbInit();
+	
+	#ifndef DEBUG
+		usbDeviceConnect();
+		usbInit();
+	#endif
 	
 // full reset timers:
 	TCNT0 = 0;
@@ -216,18 +227,20 @@ void main(void)
 	sei();
     while (1) 
     {
-		usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
+		#ifndef DEBUG
+			usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
+		#endif
 		
 		if(flag_idle) // send report immediately after "idle" time has passed:
 		{
 			if(usbInterruptIsReady())
 			{
-				usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 18.06 us
+				#ifndef DEBUG
+					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 18.06 us
+				#endif
 				
 				cnt_idle = 0;
 				flag_idle = 0;
-				
-				PORT_LED ^= (1 << LED1);
 				
 			// full reset timer 0 then enable interrupt:
 				TCNT0 = 0;
@@ -239,13 +252,24 @@ void main(void)
 		if(flag_report) // build report:
 		{ 
 			report_buf_ptr = updReportBuf(0, (uchar *)gp_state_buf); // var that defining the array is also a pointer to it
-				report_buf[0] = *report_buf_ptr;
-				report_buf[1] = *(report_buf_ptr + 1);
-				report_buf[1] <<= 4;
+				#ifdef DUMMY_AXIS_SEGA
+					report_buf[2] = *report_buf_ptr;
+					report_buf[3] = *(report_buf_ptr + 1);
+					report_buf[3] <<= 4;
+				#else
+					report_buf[0] = *report_buf_ptr;
+					report_buf[1] = *(report_buf_ptr + 1);
+					report_buf[1] <<= 4;
+				#endif
 				
 			report_buf_ptr = updReportBuf(8, (uchar *)gp_state_buf);
-				report_buf[1] |= *(report_buf_ptr + 1);
-				report_buf[2] = *report_buf_ptr;
+				#ifdef DUMMY_AXIS_SEGA
+					report_buf[3] |= *(report_buf_ptr + 1);
+					report_buf[4] = *report_buf_ptr;
+				#else
+					report_buf[1] |= *(report_buf_ptr + 1);
+					report_buf[2] = *report_buf_ptr;
+				#endif
 			
 			flag_report = 0;
 		}
@@ -256,5 +280,19 @@ void main(void)
 			gp_state_buf[1][state] = PIN_SEGA2 & SEGA_PIN_MASK;
 			flag_ch_gp = 0;
 		}
+		
+		#ifdef DUMMY_AXIS_SEGA
+			if(report_buf[2] == 0) PORT_LED &= ~(1 << LED1);
+			else PORT_LED |= (1 << LED1);
+			
+			if(report_buf[4] == 0) PORT_LED &= ~(1 << LED0);
+			else PORT_LED |= (1 << LED0);
+		#else
+			if(report_buf[0] == 0) PORT_LED &= ~(1 << LED1);
+			else PORT_LED |= (1 << LED1);
+			
+			if(report_buf[2] == 0) PORT_LED &= ~(1 << LED0);
+			else PORT_LED |= (1 << LED0);
+		#endif
     }
 }

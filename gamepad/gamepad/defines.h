@@ -1,22 +1,31 @@
 #define F_CPU 16000000L
 
+//#define DEBUG
+#define DUMMY_AXIS_SEGA /* some emulator issue error if gamepad do not have axis */
+						/* this define add in descriptor 2 useless byte (OX, OY axis) that add in report 2 const */
+						/* to avoid this error */
 // for descriptors:
 	#define UNUSED 0x00
 	#define TOTAL_LEN_DESCR (9 + 9 + 9 + 7)
-	#define REPORT_SIZE	3 /* defined by HID report */
+	
+#ifdef DUMMY_AXIS_SEGA
+	#define REPORT_SIZE	5 /* defined by HID report */
+#else
+	#define REPORT_SIZE	3
+#endif
 
 // SEGA:
-	#define PORT_SEGA1 PORTB // 1st player
+	#define PORT_SEGA1 PORTB /* 1st player */
 	#define DDR_SEGA1 DDRB
 	#define PIN_SEGA1 PINB
 	
-	#define PORT_SEGA2 PORTC // 2nd player
+	#define PORT_SEGA2 PORTC /* 2nd player */
 	#define DDR_SEGA2 DDRC
 	#define PIN_SEGA2 PINC
 	
-	#define PORT_SEGA_AUX PORTD /* one PIN on PORTD: bind by scheme */
+	#define PORT_SEGA_AUX PORTD /* one SEGA PIN on PORTD: bind by scheme */
 	#define DDR_SEGA_AUX DDRD
-	//#define PIN_SEGA_AUX PIND /* if this port use for SEL signal - PIND do not need */
+	//#define PIN_SEGA_AUX PIND /* if this port use for SEL signal - PIND do not needed */
 	
 /******************************************************* ATTENTION ******************************************************/
 /* SEGA PIN 1..4, 6, 9 must go sequentially on PORT and must fit PORT 1st and 2nd players (remember that it use for PS) */
@@ -36,7 +45,7 @@
 	#define SEGA_SEL	7 /* PIN 7 */
 
 	#define SEGA_PIN_MASK 0b00111111 /* e.g. if SEGA buttons PIN match "PORTB 0..6" => MASK = 0b00111111, */
-									/* because last 2 bits on PORTB - TOSC 1,2 */
+									 /* because last 2 bits on PORTB - TOSC 1,2 */
 									
 // PS:
 	#define PORT_PS PORTC
