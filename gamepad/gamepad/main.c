@@ -10,16 +10,17 @@
 #ifdef DEBUG
 	#warning "DEBUG is enabled"
 #endif
-					   //				    1st pl: 7 6 5 4 3 2 1 0;       1st pl  | 2nd pl			    2ns pl
-#ifdef DUMMY_AXIS_SEGA // dummy OX, OY, next byte: ST,A,C,B,R,L,D,U; next: MD,X,Y,Z,MD,X,Y,Z; next: ST,A,C,B,R,L,D,U;
-	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x00, 0x00, 0x00}; 
-#else
-	uchar report_buf[REPORT_SIZE] = {0x00, 0x00, 0x00};
+
+#ifdef NO_SEL_PS /* 1st pl axis, 2nd pl axis, 1st pl buttons, 2nd pl buttons */
+	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00}; 
+#else /* last byte use to send state of one buttons (possibly impractical) */
+	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00, 0x00}; 
 #endif
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
 
+// SEGA var and protocol:
 uchar state = 0; // 0..7 states
 /*  _____________________________
 	|Sel |D0 |D1 |D2 |D3 |D4 |D5 |
@@ -41,9 +42,10 @@ uchar state = 0; // 0..7 states
 /*		SEL:	 ____/ \_/ \_... \_______/ \_/ \_...					*/
 /************************************************************************/
 
+uchar flag_idle = 0; // shows that idle time is over and can send report
+
 uchar flag_ch_gp = 1; // shows that required save buttons state
 uchar flag_report = 0;
-uchar flag_idle = 0; // shows that idle time is over and can send report
 
 USB_PUBLIC uchar usbFunctionDescriptor(usbRequest_t * rq)
 {
@@ -111,26 +113,32 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 	return 1;
 }
 
-uchar *updReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
+void upd_SEGA_ReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
 {
-	static uchar int_report_buf[2]; // internal report buf - 0 byte: ST,A,C,B,R,L,D,U; 1 byte: 0,0,0,0,MD,X,Y,Z
-	uchar temp;
+	uchar temp, pl_offset;
+	
+	if(offset == 0) pl_offset = 0;
+	else pl_offset = 2;
 	
 	// 2,3,5 - SEL number at which data were polling in protocol (see "state" comment)
-	temp = (~(*(gp_state_ptr + 2 + offset))) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C));	// 0b00110000
-	int_report_buf[0] = temp << 2;
-
-	temp = (~(*(gp_state_ptr + 3 + offset))) & ((1 << SEGA_A_B) | (1 << SEGA_ST_C) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
-												(1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00111111
-	int_report_buf[0] |= temp;
-
-	temp = (~(*(gp_state_ptr + 5 + offset))) & ((1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) | (1 << SEGA_LF_X) | (1 << SEGA_RG_MD));	// 0b00001111
-	int_report_buf[1] = temp;
+	temp = (~(*(gp_state_ptr + 3 + offset))) & LF_RG_MASK; // inv, because on SEGA 1 - not pressed; in descriptor 1 - pressed
 	
-	return int_report_buf; // return pointer on massive
+		if(temp == LF_MASK) report_buf[1 + pl_offset] = 0xFF; // left
+		else if(temp == RG_MASK) report_buf[1 + pl_offset] = 0x00; // right
+		else report_buf[1 + pl_offset] = 0x7F;
+	
+	temp = (~(*(gp_state_ptr + 3 + offset))) & UP_DW_MASK;
+	
+		if(temp == UP_MASK) report_buf[0 + pl_offset] = 0xFF; // up
+		else if(temp == DW_MASK) report_buf[0 + pl_offset] = 0x00; // down
+		else report_buf[0 + pl_offset] = 0x7F;
+	
+	report_buf[4 + pl_offset/2] = (~(*(gp_state_ptr + 5 + offset))) & ZYX_MD_MASK;
+	report_buf[4 + pl_offset/2] |= (~(*(gp_state_ptr + 3 + offset))) & C_B_MASK;
+	report_buf[4 + pl_offset/2] |= ((~(*(gp_state_ptr + 2 + offset))) & ST_A_MASK) << 2;
 }
 
-void hardwareInit()
+void hardware_SEGA_Init()
 {
 	DDR_LED = (1 << LED0) | (1 << LED1);
 		
@@ -138,24 +146,40 @@ void hardwareInit()
 	DDR_SEGA_AUX = (1 << SEGA_SEL);
 	PORT_SEGA_AUX &= ~(1 << SEGA_SEL); // necessarily down to zero SEL signal on start
 		
-	PORT_SEGA1 = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) | // add pull up (mb not required)
+	PORT_SEGA1 = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) | // add pullup (mb not required)
 				 (1 << SEGA_A_B) | (1 << SEGA_ST_C);
 	PORT_SEGA2 = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
 				 (1 << SEGA_A_B) | (1 << SEGA_ST_C);
-		
-	//DDR_PS =
-	//PORT_PS =
-		
+	
 // timers:
-	TCCR0A = (1 << WGM01); // CTC mode with OCRA
-	TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
-	OCR0A = STEP_IDLE_CONF;
+	// for idle time:
+		TCCR0A = (1 << WGM01); // CTC mode with OCRA
+		TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
+		OCR0A = STEP_IDLE_CONF;
+	
+	// for SEGA SEL clock:	
+		TCCR2A = (1 << WGM21); // CTC mode with OCRA
+		TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
+		OCR2A = PER_POLL_GP;
 		
+		TIMSK0 = (1 << OCIE0A);
+		TIMSK2 = (1 << OCIE2A);
+}
+
+void hardware_PS_Init()
+{
+// this func call after "hardware_SEGA_init"
+	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK); // outputs
+	DDR_PS &= ~(1 << PS_MISO) & ~(1 << PS_ACK); // inputs
+
+// add pullup on inputs and issue one on outputs:
+	PORT_PS = (1 << PS_MISO) | (1 << PS_ACK) | (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	
+// for PS CLK:
 	TCCR2A = (1 << WGM21); // CTC mode with OCRA
 	TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
 	OCR2A = PER_POLL_GP;
 		
-	TIMSK0 = (1 << OCIE0A);
 	TIMSK2 = (1 << OCIE2A);
 }
 
@@ -204,10 +228,19 @@ ISR(TIMER2_COMPA_vect)
 
 void main(void)
 {
-	uchar gp_state_buf[2][8];
-	uchar *report_buf_ptr;
-
-	hardwareInit();
+	// to enable SEGA controllers, hold START on SEGA 1st controller before and after connect device to PC on 2-3 sec
+	// otherwise by default work PS controller mode
+		uchar flag_ps = 0;
+		uchar flag_first_run = 1;
+	
+	#ifdef DEBUG
+		uchar gp_state_buf[2][8] = {0x00, 0x00, 0x10, 0x15, 0x00, 0x0A, 0x00, 0x00,
+									0x00, 0x00, 0x20, 0x2A, 0x00, 0x05, 0x00, 0x00};
+	#else
+		uchar gp_state_buf[2][8];
+	#endif
+	
+	hardware_SEGA_Init();
 	
 	#ifndef DEBUG
 		usbDeviceConnect();
@@ -219,9 +252,9 @@ void main(void)
 	TCNT2 = 0;
 	
 	// reset interrupt timers flags:
-	TIFR0 |= (1 << OCF0A);
-	TIFR2 |= (1 << OCF2A); 
-	
+		TIFR0 |= (1 << OCF0A);
+		TIFR2 |= (1 << OCF2A);
+		
 	GTCCR |= (1 << PSRASY); // reset presc timers
 	
 	sei();
@@ -236,7 +269,7 @@ void main(void)
 			if(usbInterruptIsReady())
 			{
 				#ifndef DEBUG
-					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 18.06 us
+					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 18.06 us ???
 				#endif
 				
 				cnt_idle = 0;
@@ -246,31 +279,27 @@ void main(void)
 				TCNT0 = 0;
 				TIFR0 |= (1 << OCF0A); 
 				TIMSK0 |= (1 << OCIE0A);
+				
+				if(report_buf[5] == 0) PORT_LED &= ~(1 << LED0); // SEGA mode
+				else PORT_LED |= (1 << LED0); // PS mode
 			}
 		}
 		
 		if(flag_report) // build report:
 		{ 
-			report_buf_ptr = updReportBuf(0, (uchar *)gp_state_buf); // var that defining the array is also a pointer to it
-				#ifdef DUMMY_AXIS_SEGA
-					report_buf[2] = *report_buf_ptr;
-					report_buf[3] = *(report_buf_ptr + 1);
-					report_buf[3] <<= 4;
-				#else
-					report_buf[0] = *report_buf_ptr;
-					report_buf[1] = *(report_buf_ptr + 1);
-					report_buf[1] <<= 4;
-				#endif
-				
-			report_buf_ptr = updReportBuf(8, (uchar *)gp_state_buf);
-				#ifdef DUMMY_AXIS_SEGA
-					report_buf[3] |= *(report_buf_ptr + 1);
-					report_buf[4] = *report_buf_ptr;
-				#else
-					report_buf[1] |= *(report_buf_ptr + 1);
-					report_buf[2] = *report_buf_ptr;
-				#endif
+			if(!flag_ps)
+			{
+				upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // 1st player
+				upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf); // 2nd player
+			}
 			
+			if(flag_first_run & (report_buf[4] != SEGA_ON))
+			{
+				flag_ps = 1;
+				//hardware_PS_Init();
+			}
+			
+			flag_first_run = 0;
 			flag_report = 0;
 		}
 		
@@ -281,18 +310,7 @@ void main(void)
 			flag_ch_gp = 0;
 		}
 		
-		#ifdef DUMMY_AXIS_SEGA
-			if(report_buf[2] == 0) PORT_LED &= ~(1 << LED1);
-			else PORT_LED |= (1 << LED1);
-			
-			if(report_buf[4] == 0) PORT_LED &= ~(1 << LED0);
-			else PORT_LED |= (1 << LED0);
-		#else
-			if(report_buf[0] == 0) PORT_LED &= ~(1 << LED1);
-			else PORT_LED |= (1 << LED1);
-			
-			if(report_buf[2] == 0) PORT_LED &= ~(1 << LED0);
-			else PORT_LED |= (1 << LED0);
-		#endif
+		if((report_buf[4] == 0x00) | (report_buf[5] == 0x00)) PORT_LED &= ~(1 << LED1); // if buttons do not tap
+		else PORT_LED |= (1 << LED1);
     }
 }

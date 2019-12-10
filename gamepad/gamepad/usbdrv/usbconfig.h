@@ -288,11 +288,7 @@ section at the end of this file).
  * CDC class is 2, use subclass 2 and protocol 1 for ACM
  */
 
-#ifdef DUMMY_AXIS_SEGA
-	#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    43 /* total length of report descriptor */
-#else
-	#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    23
-#endif
+#define USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH    47 /* total length of report descriptor */
 
 /* Define this to the length of the HID report descriptor, if you implement
  * an HID device. Otherwise don't define it or define it to 0.
