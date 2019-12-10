@@ -89,25 +89,14 @@ const char PROGMEM usbDescriptorHidReport[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] 
 	0x81, 0x02,			//		INPUT (Data,Var,Abs)
 	0xC0,				//	END_COLLECTION
 
-	#ifdef NO_SEL_PS
-		0x05, 0x09,			//		USAGE_PAGE (Button)
-		0x19, 0x01,			//		USAGE_MINIMUM (Button 1)
-		0x29, 0x10,			//		USAGE_MAXIMUM (Button 16)
-		0x15, 0x00,			//		LOGICAL_MINIMUM (0)
-		0x25, 0x01,			//		LOGICAL_MAXIMUM (1)
-		0x75, 0x01,			//		REPORT_SIZE (1)
-		0x95, 0x10,			//		REPORT_COUNT (16)
-		0x81, 0x02,			//		INPUT (Data,Var,Abs)
-	#else
-		0x05, 0x09,			//		USAGE_PAGE (Button)
-		0x19, 0x01,			//		USAGE_MINIMUM (Button 1)
-		0x29, 0x11,			//		USAGE_MAXIMUM (Button 17)
-		0x15, 0x00,			//		LOGICAL_MINIMUM (0)
-		0x25, 0x01,			//		LOGICAL_MAXIMUM (1)
-		0x75, 0x01,			//		REPORT_SIZE (1)
-		0x95, 0x11,			//		REPORT_COUNT (17)
-		0x81, 0x02,			//		INPUT (Data,Var,Abs)
-	#endif
+	0x05, 0x09,			//		USAGE_PAGE (Button)
+	0x19, 0x01,			//		USAGE_MINIMUM (Button 1)
+	0x29, 0x10,			//		USAGE_MAXIMUM (Button 16)
+	0x15, 0x00,			//		LOGICAL_MINIMUM (0)
+	0x25, 0x01,			//		LOGICAL_MAXIMUM (1)
+	0x75, 0x01,			//		REPORT_SIZE (1)
+	0x95, 0x10,			//		REPORT_COUNT (16)
+	0x81, 0x02,			//		INPUT (Data,Var,Abs)
 	
 	0xC0				//	END_COLLECTION
 };

@@ -1,18 +1,22 @@
 #define F_CPU 16000000L
 
 //#define DEBUG
-#define NO_SEL_PS /* psx controller have 17 buttons and 4 axis (3 byte + 4 byte), if e.g. "select" button do not use */
-				  /* packet will be 2 byte + 4 byte (16 buttons + 4 axis: 0..127..255) */
+
+#define REPORT_SIZE 6 
+
+#define STEP_IDLE_CONF	250	/* 4 ms step for calculate idle time in cnt of timer 0 with presc */
+#define INIT_IDLE_TIME	4	/* 100 <=> 400 ms in cnt of timer 0 */
 
 // for descriptors:
 	#define UNUSED 0x00
 	#define TOTAL_LEN_DESCR (9 + 9 + 9 + 7)
 
-#ifdef NO_SEL_PS
-	#define REPORT_SIZE 6 /* 1st pl: OX, OY, buttons; 2nd p: OX, OY, buttons */
-#else
-	#define REPORT_SIZE 7 /* plus 1 byte for add button on PS controller */
-#endif
+// LED:
+	#define PORT_LED PORTD
+	#define DDR_LED DDRD
+
+	#define LED0 5
+	#define LED1 6
 
 /************************************************************************************************************************/
 /*                                                        SEGA:                                                         */
@@ -45,7 +49,7 @@
 		#define SEGA_A_B	4 /* PIN 6 */
 		#define SEGA_ST_C	5 /* PIN 9 */
 	
-		#define SEGA_SEL	7 /* PIN 7 */
+		#define SEGA_SEL	7 /* PIN 7 this PIN must not go on PS controller PINS */
 	
 	// mask data from "state" table on spec SEL state (see "state" comment in "main.c"):
 		#define LF_RG_MASK	0b00000011
@@ -66,6 +70,11 @@
 								/* e.g. required press START to activate SEGA MODE before and after connect device */
 								/* on 2-3 sec. START  polling on "state = 2" and in report(4) with pressed key START */
 								/* will be "0b1000000" (defined by "upd_SEGA_ReportBuf" func and "state" table in "main.c") */
+
+	#define PER_POLL_GP		30	/* period of SEL signal for gamepad in cnt of timer 2 with presc */
+	#define DELAY_BTW_POLL	255	/* delay between packets 0..7 of SEL signal in cnt of timer 2 with presc, */
+								/* for reset internal cnt in gamepad (minimum required 1.6 ms) */
+	#define DELAY_BEF_POLL	10	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 with presc */
 						
 /************************************************************************************************************************/
 /*                                                         PS:                                                          */
@@ -73,25 +82,14 @@
 
 	#define PORT_PS PORTC
 	#define DDR_PS DDRC
+	#define PIN_PS PINC
 	
 	// original controllers use 3.3 V
-	#define PS_MISO 0 /* Pin 1: "DATA", must be pullup to 3.3 or 5 V through 1kOhm */
-	#define PS_MOSI 1 /* Pin 2: "CMD" */
-	#define PS_CS	2 /* Pin 6: "ATT", attention new packet */
-	#define PS_CLK	3 /* Pin 7: ~7 kHz */
-	#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
+	// no one pins number must not coincide with SEL pin SEGA controller
+		#define PS_MISO 0 /* Pin 1: "DATA", always "0" pin MC, must be pullup to 3.3 or 5 V through 1kOhm */
+		#define PS_MOSI 1 /* Pin 2: "CMD" */
+		#define PS_CS	2 /* Pin 6: "ATT", attention new packet */
+		#define PS_CLK	3 /* Pin 7: ~7 kHz */
+		#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
 
-// LED:
-	#define PORT_LED PORTD
-	#define DDR_LED DDRD
-
-	#define LED0 5
-	#define LED1 6
-
-#define STEP_IDLE_CONF	250	/* 4 ms step for calculate idle time in cnt of timer 0 */
-#define INIT_IDLE_TIME	4	/* 100 <=> 400 ms in cnt of timer 0 */
-
-#define PER_POLL_GP		30	/* period of SEL signal for gamepad in cnt of timer 2  */
-#define DELAY_BTW_POLL	255	/* delay between packets 0..7 of SEL signal in cnt of timer 2, */
-							/* for reset internal cnt in gamepad (minimum required 1.6 ms) */
-#define DELAY_BEF_POLL	10	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 */
+	#define CLK_HALF_PER 142 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */

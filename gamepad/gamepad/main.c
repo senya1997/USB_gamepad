@@ -11,17 +11,15 @@
 	#warning "DEBUG is enabled"
 #endif
 
-#ifdef NO_SEL_PS /* 1st pl axis, 2nd pl axis, 1st pl buttons, 2nd pl buttons */
-	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00}; 
-#else /* last byte use to send state of one buttons (possibly impractical) */
-	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00, 0x00}; 
-#endif
+	/* 1st pl axis, 2nd pl axis, 1st pl buttons, 2nd pl buttons */
+uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00}; 
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
 
 // SEGA var and protocol:
-uchar state = 0; // 0..7 states
+	uchar state = 0; // 0..7 states
+	
 /*  _____________________________
 	|Sel |D0 |D1 |D2 |D3 |D4 |D5 |
 	+----+---+---+---+---+---+---+
@@ -42,9 +40,32 @@ uchar state = 0; // 0..7 states
 /*		SEL:	 ____/ \_/ \_... \_______/ \_/ \_...					*/
 /************************************************************************/
 
+// PS var and protocol:
+	uchar temp_report_buf[REPORT_SIZE];
+
+	uchar cnt_data = 0;
+	uchar cnt_edge = 0;
+	
+	uchar flag_ps = 0; // to enable SEGA controllers, hold spec comb on SEGA controller before and after connect device 
+					   // to PC on 2-3 sec otherwise by default work PS controller mode (see "defines.h")
+		
+/*********************************************************************************/
+/* CLK ~ 7 kHz, issue data LSB on MISO and MOSI on falling edge, read on front   */
+/* seq from MC:  0x01 | 0x42 | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF    */
+/* seq from JOY: 0xFF | 0x73 | 0x5A | DAT1 | DAT2 | RJX  | RJY  | LJX  | LJY     */
+/*		       ___														   _____ */
+/*		   CS:	  |_______________________________________________________|	     */
+/*             _____   _   _   _   _   _   _   _   _____   _  		 _	 _______ */
+/*		  CLK:      |_| |_| |_| |_| |_| |_| |_| |_|     |_| |_ ... _| |_|		 */
+/*					  r   r   r   r   r   r   r   r   r  						 */
+/* MOSI, MISO: -----.000.111.222.333.444.555.666.777.---.000.1 ... 666.777.----- */
+/*			   _____________________________________1CLK______ ... _____________ */
+/*		  ACK:									    |__|						 */
+/*********************************************************************************/
+
 uchar flag_idle = 0; // shows that idle time is over and can send report
 
-uchar flag_ch_gp = 1; // shows that required save buttons state
+uchar flag_ch_gp = 1; // shows that required save gamepad state
 uchar flag_report = 0;
 
 USB_PUBLIC uchar usbFunctionDescriptor(usbRequest_t * rq)
@@ -133,9 +154,9 @@ void upd_SEGA_ReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by 
 		else if(temp == DW_MASK) report_buf[0 + pl_offset] = 0x00; // down
 		else report_buf[0 + pl_offset] = 0x7F;
 	
-	report_buf[4 + pl_offset/2] = (~(*(gp_state_ptr + 5 + offset))) & ZYX_MD_MASK;
-	report_buf[4 + pl_offset/2] |= (~(*(gp_state_ptr + 3 + offset))) & C_B_MASK;
-	report_buf[4 + pl_offset/2] |= ((~(*(gp_state_ptr + 2 + offset))) & ST_A_MASK) << 2;
+	report_buf[4 + (pl_offset >> 1)] = (~(*(gp_state_ptr + 5 + offset))) & ZYX_MD_MASK;
+	report_buf[4 + (pl_offset >> 1)] |= (~(*(gp_state_ptr + 3 + offset))) & C_B_MASK;
+	report_buf[4 + (pl_offset >> 1)] |= ((~(*(gp_state_ptr + 2 + offset))) & ST_A_MASK) << 2;
 }
 
 void hardware_SEGA_Init()
@@ -151,7 +172,7 @@ void hardware_SEGA_Init()
 	PORT_SEGA2 = (1 << SEGA_LF_X) | (1 << SEGA_RG_MD) | (1 << SEGA_UP_Z) | (1 << SEGA_DW_Y) |
 				 (1 << SEGA_A_B) | (1 << SEGA_ST_C);
 	
-// timers:
+// timers, DO NOT forget to approve with CPU freq:
 	// for idle time:
 		TCCR0A = (1 << WGM01); // CTC mode with OCRA
 		TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
@@ -168,19 +189,21 @@ void hardware_SEGA_Init()
 
 void hardware_PS_Init()
 {
-// this func call after "hardware_SEGA_init"
+// this func call after "hardware_SEGA_init" when PS mode is activating
 	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK); // outputs
 	DDR_PS &= ~(1 << PS_MISO) & ~(1 << PS_ACK); // inputs
 
 // add pullup on inputs and issue one on outputs:
 	PORT_PS = (1 << PS_MISO) | (1 << PS_ACK) | (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
 	
-// for PS CLK:
-	TCCR2A = (1 << WGM21); // CTC mode with OCRA
-	TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
-	OCR2A = PER_POLL_GP;
-		
-	TIMSK2 = (1 << OCIE2A);
+// for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
+	TCCR2B = (1 << CS21); // presc = 8 => half period CLK 71.4285 us <=> 142.857 cnt
+	OCR2A = CLK_HALF_PER;
+	
+// full reset timer:
+	TCNT2 = 0;
+	TIFR2 |= (1 << OCF2A);
+	GTCCR |= (1 << PSRASY); // reset presc timers (include "idle timer" presc)
 }
 
 ISR(TIMER0_COMPA_vect)
@@ -202,36 +225,110 @@ ISR(TIMER2_COMPA_vect)
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
 		sei();
 	
-		if(state < 7) 
+		if(flag_ps)
 		{
-			PORT_SEGA_AUX ^= (1 << SEGA_SEL);
-		
-			flag_ch_gp = 1;
-			state++;
-		}
-		else if(state == 8)
-		{ // after delay between "packets":
-			OCR2A = PER_POLL_GP;
-			flag_ch_gp = 1;
-			state = 0;
+			switch(cnt_data)
+			{
+				case 0: // idle state:
+					if(cnt_edge == 2)
+					{
+						PORT_PS &= ~(1 << PS_CS); 
+						PORT_PS |= (1 << PS_MOSI);
+						
+						cnt_edge = 0;
+						cnt_data++;
+					}
+					else cnt_edge++;
+					
+					break;
+				case 1: // send 0x01:
+					if(cnt_edge == 18)
+					{
+						cnt_edge = 0;
+						cnt_data++;
+					}
+					else if(cnt_edge > 15) cnt_edge++;
+					else
+					{
+						if(cnt_edge == 3) PORT_PS &= ~(1 << PS_MOSI);
+						
+						PORT_PS ^= (1 << PS_CLK);
+						cnt_edge++;
+					}
+					break;
+				case 2: // send 0x42:
+					if(cnt_edge == 18)
+					{
+						PORT_PS |= (1 << PS_MOSI);
+						
+						cnt_edge = 0;
+						cnt_data++;
+					}
+					else if(cnt_edge > 15) cnt_edge++;
+					else
+					{
+						if((cnt_edge == 3) | (cnt_edge == 4) | (cnt_edge == 13) | (cnt_edge == 14)) PORT_PS |= (1 << PS_MOSI);
+						else PORT_PS &= ~(1 << PS_MOSI);
+						
+						PORT_PS ^= (1 << PS_CLK);
+						cnt_edge++;
+					}
+					break;
+				default:
+					if(cnt_edge == 18)
+					{
+						cnt_edge = 0;
+						
+						if(cnt_data == 9) 
+						{
+							flag_report = 1;
+							cnt_data = 0;
+						}
+						else cnt_data++;
+					}
+					else if(cnt_edge > 15) cnt_edge++;
+					else
+					{
+						if((cnt_edge & 0x01) == 1) 
+							temp_report_buf[cnt_data - 4] |= (PIN_PS & (1 << PS_MISO)) << ((cnt_edge - 1) >> 1);
+						
+						PORT_PS ^= (1 << PS_CLK);
+						cnt_edge++;
+					}
+					break;
+			}
 		}
 		else
-		{ // after "packet":
-			PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
-			OCR2A = DELAY_BTW_POLL;
+		{
+			if(state < 7) 
+			{
+				PORT_SEGA_AUX ^= (1 << SEGA_SEL);
 		
-			flag_report = 1;
-			state = 8;
+				flag_ch_gp = 1;
+				state++;
+			}
+			else if(state == 8)
+			{ // after delay between "packets":
+				OCR2A = PER_POLL_GP;
+				flag_ch_gp = 1;
+				state = 0;
+			}
+			else
+			{ // after "packet":
+				PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
+				OCR2A = DELAY_BTW_POLL;
+		
+				flag_report = 1;
+				state = 8;
+			}
 		}
+	
 	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
 
 void main(void)
 {
-	// to enable SEGA controllers, hold START on SEGA 1st controller before and after connect device to PC on 2-3 sec
-	// otherwise by default work PS controller mode
-		uchar flag_ps = 0;
-		uchar flag_first_run = 1;
+	uchar flag_first_run = 1;
 	
 	#ifdef DEBUG
 		uchar gp_state_buf[2][8] = {0x00, 0x00, 0x10, 0x15, 0x00, 0x0A, 0x00, 0x00,
@@ -292,11 +389,22 @@ void main(void)
 				upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // 1st player
 				upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf); // 2nd player
 			}
+			else
+			{
+				report_buf[0] = temp_report_buf[5];
+				report_buf[1] = temp_report_buf[4];
+				report_buf[2] = temp_report_buf[3];
+				report_buf[3] = temp_report_buf[2];
+				report_buf[4] = temp_report_buf[1];
+				report_buf[5] = temp_report_buf[0];
+			}
 			
 			if(flag_first_run & (report_buf[4] != SEGA_ON))
 			{
 				flag_ps = 1;
-				//hardware_PS_Init();
+				flag_ch_gp = 0;
+				
+				hardware_PS_Init();
 			}
 			
 			flag_first_run = 0;
@@ -310,7 +418,7 @@ void main(void)
 			flag_ch_gp = 0;
 		}
 		
-		if((report_buf[4] == 0x00) | (report_buf[5] == 0x00)) PORT_LED &= ~(1 << LED1); // if buttons do not tap
+		if((report_buf[4] == 0x00) | (report_buf[5] == 0x00)) PORT_LED &= ~(1 << LED1); // if buttons not pressed
 		else PORT_LED |= (1 << LED1);
     }
 }
