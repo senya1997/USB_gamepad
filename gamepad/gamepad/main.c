@@ -49,8 +49,9 @@ uchar cnt_idle = 0;
 	uchar cnt_data = 0;
 	uchar cnt_edge = 0;
 	
+	uchar flag_upd_cnt = 0;
 	uchar flag_ps = 0; // analog "flag_sega"
-		
+	
 /*********************************************************************************/
 /* CLK ~ 7 kHz, issue data LSB on MISO and MOSI on falling edge, read on front   */
 /* seq from MC:  0x01 | 0x42 | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF | 0xFF    */
@@ -159,6 +160,47 @@ void upd_SEGA_ReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by 
 	report_buf[4 + (pl_offset >> 1)] |= ((~(*(gp_state_ptr + 2 + offset))) & ST_A_MASK) << 2;
 }
 
+void upd_PS_cnt()
+{
+	if(cnt_data == 0)
+	{
+		if(cnt_edge == 2)
+		{
+			cnt_edge = 0;
+			cnt_data++;
+		}
+		else cnt_edge++;
+	}
+	else if((cnt_data == 1) | (cnt_data == 2))
+	{
+		if(cnt_edge == 18)
+		{
+			cnt_edge = 0;
+			cnt_data++;
+		}
+		else if(cnt_edge > 15) cnt_edge++;
+		else cnt_edge++;
+	}
+	else
+	{
+		if(cnt_edge == 18)
+		{
+			cnt_edge = 0;
+			
+			if(cnt_data == 9)
+			{
+				flag_report = 1;
+				cnt_data = 0;
+			}
+			else cnt_data++;
+		}
+		else if(cnt_edge > 15) cnt_edge++;
+		else cnt_edge++;
+	}
+
+	flag_upd_cnt = 0;
+}
+
 void hardware_SEGA_Init()
 {
 	DDR_LED = (1 << LED0) | (1 << LED1);
@@ -231,7 +273,7 @@ ISR(TIMER1_COMPA_vect)
 	sei();
 	
 	// CLK:
-	if((cnt_data > 0) & (cnt_edge <= 15)) PORT_PS ^= (1 << PS_CLK); // mb "cnt" var go to reg for faster using
+	if((cnt_data > 0) & (cnt_edge <= 15)) PORT_PS ^= (1 << PS_CLK);
 	
 	// MISO:
 	if((cnt_data > 2) & (cnt_edge <= 15) & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
@@ -250,42 +292,8 @@ ISR(TIMER1_COMPA_vect)
 	if((cnt_data == 9) & (cnt_edge == 18)) PORT_PS |= (1 << PS_CS);
 	else if((cnt_data == 0) & (cnt_edge == 2)) PORT_PS &= ~(1 << PS_CS);
 
-		if(cnt_data == 0)
-		{
-			if(cnt_edge == 2)
-			{
-				cnt_edge = 0;
-				cnt_data++;
-			}
-			else cnt_edge++;
-		}
-		else if((cnt_data == 1) | (cnt_data == 2))
-		{
-			if(cnt_edge == 18)
-			{
-				cnt_edge = 0;
-				cnt_data++;
-			}
-			else if(cnt_edge > 15) cnt_edge++;
-			else cnt_edge++;
-		}
-		else
-		{
-			if(cnt_edge == 18)
-			{
-				cnt_edge = 0;
-				
-				if(cnt_data == 9)
-				{
-					flag_report = 1;
-					cnt_data = 0;
-				}
-				else cnt_data++;
-			}
-			else if(cnt_edge > 15) cnt_edge++;
-			else cnt_edge++;
-		}
-
+	flag_upd_cnt = 1;
+	
 	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
 
@@ -319,7 +327,7 @@ ISR(TIMER2_COMPA_vect)
 	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
 
-void main(void)
+void main()
 {
 	uchar flag_first_run = 1;
 	
@@ -366,6 +374,8 @@ void main(void)
 			usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
 		#endif
 		
+		if(flag_upd_cnt) upd_PS_cnt();
+		
 		if(flag_idle) // send report immediately after "idle" time has passed:
 		{
 			if(usbInterruptIsReady())
@@ -373,6 +383,8 @@ void main(void)
 				#ifndef DEBUG
 					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 31.5 us
 				#endif
+				
+				if(flag_upd_cnt) upd_PS_cnt();
 				
 				cnt_idle = 0;
 				flag_idle = 0;
@@ -402,6 +414,8 @@ void main(void)
 				report_buf[3] = temp_report_buf[2];
 				report_buf[4] = temp_report_buf[1];
 				report_buf[5] = temp_report_buf[0];
+				
+				if(flag_upd_cnt) upd_PS_cnt();
 			}
 			
 			if(flag_first_run) // 2nd pl SEGA <=> PS joy
