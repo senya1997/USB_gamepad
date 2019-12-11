@@ -11,14 +11,25 @@
 	#warning "DEBUG is enabled"
 #endif
 
-	/* 1st pl axis, 2nd pl axis, 1st pl buttons, 2nd pl buttons */
-uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00}; 
-	
+#ifdef DEBUG_SEGA
+	uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, SEGA_ON, 0x00};
+	#warning "SEGA MODE DEBUG is enabled"
+#else
+	#ifdef DEBUG_PS
+		uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, PS_ON};
+		#warning "PS MODE DEBUG is enabled"
+	#else
+		uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00};
+	#endif
+#endif
+
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
 
 // SEGA var and protocol:
 	uchar state = 0; // 0..7 states
+	uchar flag_sega = 0; // to enable SEGA controllers, hold spec comb on 2nd SEGA controller before and after connect device
+						 // to PC on 2-3 sec (see "defines.h")
 	
 /*  _____________________________
 	|Sel |D0 |D1 |D2 |D3 |D4 |D5 |
@@ -46,8 +57,7 @@ uchar cnt_idle = 0;
 	uchar cnt_data = 0;
 	uchar cnt_edge = 0;
 	
-	uchar flag_ps = 0; // to enable SEGA controllers, hold spec comb on SEGA controller before and after connect device 
-					   // to PC on 2-3 sec otherwise by default work PS controller mode (see "defines.h")
+	uchar flag_ps = 0; // analog "flag_sega"
 		
 /*********************************************************************************/
 /* CLK ~ 7 kHz, issue data LSB on MISO and MOSI on falling edge, read on front   */
@@ -197,18 +207,21 @@ void hardware_PS_Init()
 	PORT_PS = (1 << PS_MISO) | (1 << PS_ACK) | (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
 	
 // for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
-	TCCR2B = (1 << CS21); // presc = 8 => half period CLK 71.4285 us <=> 142.857 cnt
-	OCR2A = CLK_HALF_PER;
+	TCCR1B = (1 << WGM12) | (1 << CS10); // CTC mode with OCR1A, presc = 1 => half period CLK 71.4285 us <=> 1142.856 cnt
+	OCR1A = CLK_HALF_PER;
+	TIMSK1 = (1 << OCIE1A);
 	
 // full reset timer:
-	TCNT2 = 0;
-	TIFR2 |= (1 << OCF2A);
-	GTCCR |= (1 << PSRASY); // reset presc timers (include "idle timer" presc)
+	//TCNT2 = 0;
+	//TIFR2 |= (1 << OCF2A);
+	//GTCCR |= (1 << PSRASY); // reset presc timers (include "idle timer" presc)
 }
 
 ISR(TIMER0_COMPA_vect)
 {
-	TIMSK2 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
+	if(flag_sega) TIMSK2 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
+	if(flag_ps) TIMSK1 &= ~(1 << OCIE1A);
+	
 		sei();
 		
 		if(cnt_idle < delay_idle) cnt_idle++;
@@ -217,7 +230,90 @@ ISR(TIMER0_COMPA_vect)
 			TIMSK0 &= ~(1 << OCIE0A);
 			flag_idle = 1;
 		}
-	TIMSK2 |= (1 << OCIE2A); // "sei"
+		
+	if(flag_sega) TIMSK2 |= (1 << OCIE2A); // "sei"
+	if(flag_ps) TIMSK1 |= (1 << OCIE1A);
+}
+
+ISR(TIMER1_COMPA_vect)
+{
+	TIMSK0 &= ~(1 << OCIE0A); // "cli"
+	sei();
+
+		switch(cnt_data)
+		{
+			case 0: // idle state:
+				if(cnt_edge == 2)
+				{
+					PORT_PS &= ~(1 << PS_CS);
+					PORT_PS |= (1 << PS_MOSI);
+					
+					cnt_edge = 0;
+					cnt_data++;
+				}
+				else cnt_edge++;
+				
+				break;
+			case 1: // send 0x01:
+				if(cnt_edge == 18)
+				{
+					cnt_edge = 0;
+					cnt_data++;
+				}
+				else if(cnt_edge > 15) cnt_edge++;
+				else
+				{
+					PORT_PS ^= (1 << PS_CLK);
+		
+					if(cnt_edge == 3) PORT_PS &= ~(1 << PS_MOSI);
+					cnt_edge++;
+				}
+				break;
+			case 2: // send 0x42:
+				if(cnt_edge == 18)
+				{
+					PORT_PS |= (1 << PS_MOSI);
+		
+					cnt_edge = 0;
+					cnt_data++;
+				}
+				else if(cnt_edge > 15) cnt_edge++;
+				else
+				{
+					PORT_PS ^= (1 << PS_CLK);
+		
+					if((cnt_edge == 3) | (cnt_edge == 4) | (cnt_edge == 13) | (cnt_edge == 14)) PORT_PS |= (1 << PS_MOSI);
+					else PORT_PS &= ~(1 << PS_MOSI);
+		
+					cnt_edge++;
+				}
+				break;
+			default:
+				if(cnt_edge == 18)
+				{
+					cnt_edge = 0;
+		
+					if(cnt_data == 9)
+					{
+						flag_report = 1;
+						cnt_data = 0;
+					}
+					else cnt_data++;
+				}
+				else if(cnt_edge > 15) cnt_edge++;
+				else
+				{
+					PORT_PS ^= (1 << PS_CLK);
+		
+					if((cnt_edge & 0x01) == 1)
+					temp_report_buf[cnt_data - 4] |= (PIN_PS & (1 << PS_MISO)) << ((cnt_edge - 1) >> 1);
+		
+					cnt_edge++;
+				}
+			break;
+		}
+
+	TIMSK0 |= (1 << OCIE0A); // "sei"
 }
 
 ISR(TIMER2_COMPA_vect)
@@ -225,102 +321,26 @@ ISR(TIMER2_COMPA_vect)
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
 		sei();
 	
-		if(flag_ps)
+		if(state < 7) 
 		{
-			switch(cnt_data)
-			{
-				case 0: // idle state:
-					if(cnt_edge == 2)
-					{
-						PORT_PS &= ~(1 << PS_CS); 
-						PORT_PS |= (1 << PS_MOSI);
-						
-						cnt_edge = 0;
-						cnt_data++;
-					}
-					else cnt_edge++;
-					
-					break;
-				case 1: // send 0x01:
-					if(cnt_edge == 18)
-					{
-						cnt_edge = 0;
-						cnt_data++;
-					}
-					else if(cnt_edge > 15) cnt_edge++;
-					else
-					{
-						if(cnt_edge == 3) PORT_PS &= ~(1 << PS_MOSI);
-						
-						PORT_PS ^= (1 << PS_CLK);
-						cnt_edge++;
-					}
-					break;
-				case 2: // send 0x42:
-					if(cnt_edge == 18)
-					{
-						PORT_PS |= (1 << PS_MOSI);
-						
-						cnt_edge = 0;
-						cnt_data++;
-					}
-					else if(cnt_edge > 15) cnt_edge++;
-					else
-					{
-						if((cnt_edge == 3) | (cnt_edge == 4) | (cnt_edge == 13) | (cnt_edge == 14)) PORT_PS |= (1 << PS_MOSI);
-						else PORT_PS &= ~(1 << PS_MOSI);
-						
-						PORT_PS ^= (1 << PS_CLK);
-						cnt_edge++;
-					}
-					break;
-				default:
-					if(cnt_edge == 18)
-					{
-						cnt_edge = 0;
-						
-						if(cnt_data == 9) 
-						{
-							flag_report = 1;
-							cnt_data = 0;
-						}
-						else cnt_data++;
-					}
-					else if(cnt_edge > 15) cnt_edge++;
-					else
-					{
-						if((cnt_edge & 0x01) == 1) 
-							temp_report_buf[cnt_data - 4] |= (PIN_PS & (1 << PS_MISO)) << ((cnt_edge - 1) >> 1);
-						
-						PORT_PS ^= (1 << PS_CLK);
-						cnt_edge++;
-					}
-					break;
-			}
+			PORT_SEGA_AUX ^= (1 << SEGA_SEL);
+		
+			flag_ch_gp = 1;
+			state++;
+		}
+		else if(state == 8)
+		{ // after delay between "packets":
+			OCR2A = PER_POLL_GP;
+			flag_ch_gp = 1;
+			state = 0;
 		}
 		else
-		{
-			if(state < 7) 
-			{
-				PORT_SEGA_AUX ^= (1 << SEGA_SEL);
+		{ // after "packet":
+			PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
+			OCR2A = DELAY_BTW_POLL;
 		
-				flag_ch_gp = 1;
-				state++;
-			}
-			else if(state == 8)
-			{ // after delay between "packets":
-				OCR2A = PER_POLL_GP;
-				flag_ch_gp = 1;
-				state = 0;
-			}
-			else
-			{ // after "packet":
-				PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
-				OCR2A = DELAY_BTW_POLL;
-		
-				flag_report = 1;
-				state = 8;
-			}
+			flag_report = 1;
+			state = 8;
 		}
 	
 	TIMSK0 |= (1 << OCIE0A); // "sei"
@@ -372,24 +392,24 @@ void main(void)
 				cnt_idle = 0;
 				flag_idle = 0;
 				
-			// full reset timer 0 then enable interrupt:
+			// full reset idle timer then enable interrupt:
 				TCNT0 = 0;
 				TIFR0 |= (1 << OCF0A); 
 				TIMSK0 |= (1 << OCIE0A);
 				
-				if(report_buf[5] == 0) PORT_LED &= ~(1 << LED0); // SEGA mode
-				else PORT_LED |= (1 << LED0); // PS mode
+				if(flag_sega) PORT_LED |= (1 << LED1);
+				else if(flag_ps) PORT_LED |= (1 << LED0);
 			}
 		}
 		
 		if(flag_report) // build report:
 		{ 
-			if(!flag_ps)
+			if(flag_sega | flag_first_run)
 			{
 				upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // 1st player
 				upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf); // 2nd player
 			}
-			else
+			else if(flag_ps)
 			{
 				report_buf[0] = temp_report_buf[5];
 				report_buf[1] = temp_report_buf[4];
@@ -399,15 +419,23 @@ void main(void)
 				report_buf[5] = temp_report_buf[0];
 			}
 			
-			if(flag_first_run & (report_buf[4] != SEGA_ON))
-			{
-				flag_ps = 1;
-				flag_ch_gp = 0;
+			if(flag_first_run) // 2nd pl SEGA <=> PS joy
+			{	//			2nd pl						1st pl
+				if((report_buf[5] == SEGA_ON) & (report_buf[4] != PS_ON)) flag_sega = 1;
+				else if((report_buf[5] != SEGA_ON) & (report_buf[4] == PS_ON))
+				{
+					TIMSK2 &= ~(1 << OCIE2A); // disable SEGA interrupt (enable by default)
+					
+					flag_ps = 1;
+					flag_ch_gp = 0;
+					
+					hardware_PS_Init();
+				}
+				else TIMSK2 &= ~(1 << OCIE2A); // idle mode: disable all interrupts
 				
-				hardware_PS_Init();
-			}
+				flag_first_run = 0;
+			} 
 			
-			flag_first_run = 0;
 			flag_report = 0;
 		}
 		
@@ -418,7 +446,16 @@ void main(void)
 			flag_ch_gp = 0;
 		}
 		
-		if((report_buf[4] == 0x00) | (report_buf[5] == 0x00)) PORT_LED &= ~(1 << LED1); // if buttons not pressed
-		else PORT_LED |= (1 << LED1);
+		// LEDs:
+		if((report_buf[4] == 0x00) | (report_buf[5] == 0x00)) // if buttons not pressed
+		{
+			if(flag_sega) PORT_LED &= ~(1 << LED0);
+			else if(flag_ps) PORT_LED &= ~(1 << LED1);
+		}
+		else
+		{
+			if(flag_sega) PORT_LED |= (1 << LED0);
+			else if(flag_ps) PORT_LED |= (1 << LED1);
+		}
     }
 }
