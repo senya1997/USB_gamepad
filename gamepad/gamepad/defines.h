@@ -1,8 +1,8 @@
 #define F_CPU 16000000L
 
-#define DEBUG
-#define DEBUG_SEGA
-//#define DEBUG_PS
+//#define DEBUG
+	//#define DEBUG_SEGA
+	#define DEBUG_PS
 
 #ifdef DEBUG_PS
 	#undef DEBUG_SEGA
