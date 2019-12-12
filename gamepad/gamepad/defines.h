@@ -1,8 +1,13 @@
 #define F_CPU 16000000L
 
 //#define DEBUG
+//#define PROTEUS
 	//#define DEBUG_SEGA
 	#define DEBUG_PS
+
+#ifdef PROTEUS
+	#define DEBUG
+#endif
 
 #ifdef DEBUG_PS
 	#undef DEBUG_SEGA
@@ -99,5 +104,8 @@
 		#define PS_CS	2 /* Pin 6: "ATT", attention new packet */
 		#define PS_CLK	3 /* Pin 7: ~7 kHz */
 		#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
-
-	#define CLK_HALF_PER 1142 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */
+	#ifdef DUBUG
+		#define PS_DEBUG 5
+	#endif
+	
+	#define CLK_HALF_PER 2300 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */

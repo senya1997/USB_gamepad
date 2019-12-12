@@ -11,6 +11,10 @@
 	#warning "DEBUG is enabled"
 #endif
 
+#ifdef PROTEUS
+	#warning "PROTEUS SIM is enabled"
+#endif
+
 uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00};
 
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
@@ -48,6 +52,9 @@ uchar cnt_idle = 0;
 
 	uchar cnt_data = 0;
 	uchar cnt_edge = 0;
+	uchar cnt_rep_buf = 5;
+	
+	uchar offset;
 	
 	uchar flag_upd_cnt = 0;
 	uchar flag_ps = 0; // analog "flag_sega"
@@ -67,7 +74,12 @@ uchar cnt_idle = 0;
 /*********************************************************************************/
 
 uchar flag_idle = 0; // shows that idle time is over and can send report
-uchar flag_report = 0; // shows that information from gamepad is ready to form like in descriptor
+
+#ifdef DEBUG
+	uchar flag_report = 1;
+#else
+	uchar flag_report = 0; // shows that information from gamepad is ready to form like in descriptor
+#endif
 
 USB_PUBLIC uchar usbFunctionDescriptor(usbRequest_t * rq)
 {
@@ -166,6 +178,7 @@ void upd_PS_cnt()
 	{
 		if(cnt_edge == 2)
 		{
+			cnt_rep_buf = 5;
 			cnt_edge = 0;
 			cnt_data++;
 		}
@@ -186,6 +199,7 @@ void upd_PS_cnt()
 		if(cnt_edge == 18)
 		{
 			cnt_edge = 0;
+			cnt_rep_buf--;
 			
 			if(cnt_data == 9)
 			{
@@ -195,7 +209,11 @@ void upd_PS_cnt()
 			else cnt_data++;
 		}
 		else if(cnt_edge > 15) cnt_edge++;
-		else cnt_edge++;
+		else 
+		{
+			offset = (cnt_edge - 1) >> 1;
+			cnt_edge++;
+		}
 	}
 
 	flag_upd_cnt = 0;
@@ -232,21 +250,23 @@ void hardware_SEGA_Init()
 void hardware_PS_Init()
 {
 // this func call after "hardware_SEGA_init" when PS mode is activating
-	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK); // outputs
+
+#ifdef DEBUG
+	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK) | (1 << PS_DEBUG); // outputs
+#else 
+	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+#endif
+
 	DDR_PS &= ~(1 << PS_MISO) & ~(1 << PS_ACK); // inputs
 
 // add pullup on inputs and issue one on outputs:
 	PORT_PS = (1 << PS_MISO) | (1 << PS_ACK) | (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	//PORT_PS &= ~(1 << PS_ACK) & ~(1 << PS_MISO);  // no pullup
 	
 // for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
 	TCCR1B = (1 << WGM12) | (1 << CS10); // CTC mode with OCR1A, presc = 1 => half period CLK 71.4285 us <=> 1142.856 cnt
 	OCR1A = CLK_HALF_PER;
 	TIMSK1 = (1 << OCIE1A);
-	
-// full reset timer:
-	//TCNT2 = 0;
-	//TIFR2 |= (1 << OCF2A);
-	//GTCCR |= (1 << PSRASY); // reset presc timers (include "idle timer" presc)
 }
 
 ISR(TIMER0_COMPA_vect)
@@ -276,13 +296,20 @@ ISR(TIMER1_COMPA_vect)
 	if((cnt_data > 0) & (cnt_edge <= 15)) PORT_PS ^= (1 << PS_CLK);
 	
 	// MISO:
-	if((cnt_data > 2) & (cnt_edge <= 15) & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
+	if((cnt_data > 3) & (cnt_edge <= 15) & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
+	{
 		temp_report_buf[cnt_data - 4] |= (PIN_PS & (1 << PS_MISO)) << ((cnt_edge - 1) >> 1);
+		//temp_report_buf[cnt_rep_buf] |= (PIN_PS & (1 << PS_MISO)) << offset;
+		
+		#ifdef DEBUG
+			PORT_PS ^= (1 << PS_DEBUG);
+		#endif
+	}
 	
 	// MOSI:
 	if(cnt_data == 2) 
 	{
-		if((cnt_edge == 18) | (cnt_edge == 3) | (cnt_edge == 4) | (cnt_edge == 13) | (cnt_edge == 14)) 
+		if((cnt_edge == 18) | (cnt_edge == 2) | (cnt_edge == 3) | (cnt_edge == 12) | (cnt_edge == 13)) 
 			PORT_PS |= (1 << PS_MOSI);
 		else PORT_PS &= ~(1 << PS_MOSI);
 	}
@@ -291,7 +318,7 @@ ISR(TIMER1_COMPA_vect)
 	// CS:
 	if((cnt_data == 9) & (cnt_edge == 18)) PORT_PS |= (1 << PS_CS);
 	else if((cnt_data == 0) & (cnt_edge == 2)) PORT_PS &= ~(1 << PS_CS);
-
+	
 	flag_upd_cnt = 1;
 	
 	TIMSK0 |= (1 << OCIE0A); // "sei"
@@ -374,6 +401,10 @@ void main()
 			usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
 		#endif
 		
+		#ifdef PROTEUS
+			usbPoll();
+		#endif
+		
 		if(flag_upd_cnt) upd_PS_cnt();
 		
 		if(flag_idle) // send report immediately after "idle" time has passed:
@@ -382,6 +413,10 @@ void main()
 			{
 				#ifndef DEBUG
 					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 31.5 us
+				#endif
+				
+				#ifdef PROTEUS
+					usbSetInterrupt(report_buf, REPORT_SIZE);
 				#endif
 				
 				if(flag_upd_cnt) upd_PS_cnt();
@@ -412,8 +447,8 @@ void main()
 				report_buf[1] = temp_report_buf[4];
 				report_buf[2] = temp_report_buf[3];
 				report_buf[3] = temp_report_buf[2];
-				report_buf[4] = temp_report_buf[1];
-				report_buf[5] = temp_report_buf[0];
+				report_buf[4] = ~temp_report_buf[1];
+				report_buf[5] = ~temp_report_buf[0];
 				
 				if(flag_upd_cnt) upd_PS_cnt();
 			}
