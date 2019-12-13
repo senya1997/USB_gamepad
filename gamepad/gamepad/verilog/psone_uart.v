@@ -48,14 +48,6 @@ reg [5:0] tx_countdown;
 reg [3:0] tx_bits_remaining;
 reg [7:0] tx_data;
  
-assign oREC_END = (recv_state == RX_RECEIVED);
-assign oREC_ER = (recv_state == RX_ERROR);
-assign oREC_BUSY = (recv_state != RX_IDLE);
-assign oRX_BYTE = rx_data;
- 
-assign oTX = tx_out;
-assign oTRAN_BUSY = tx_state != TX_IDLE;
- 
 always @(posedge iCLK) begin
     if (!iRESET) begin
         recv_state = RX_IDLE;
@@ -191,4 +183,12 @@ always @(posedge iCLK) begin
     endcase
 end
  
+assign oREC_END = (recv_state == RX_RECEIVED);
+assign oREC_ER = (recv_state == RX_ERROR);
+assign oREC_BUSY = (recv_state != RX_IDLE);
+assign oRX_BYTE = rx_data;
+ 
+assign oTX = tx_out;
+assign oTRAN_BUSY = tx_state != TX_IDLE;
+
 endmodule 

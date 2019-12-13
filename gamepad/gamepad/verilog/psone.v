@@ -1,9 +1,7 @@
-//`define DEBUG
-
 `ifdef MODEL_TECH
 	`define HALF_PER_TIME 10 
 `else
-	`define HALF_PER_TIME 500 
+	`define HALF_PER_TIME 250 
 `endif
 
 module psone(
@@ -23,12 +21,12 @@ module psone(
 	
 `ifndef MODEL_TECH
 	,
-	output [2 : 0] oLED
+	output [1 : 0] oLED
 `endif	
 );
 
 `ifndef MODEL_TECH
-	reg [2 : 0] led;
+	reg [1 : 0] led;
 	reg [23 : 0] cnt_led;
 	
 	wire SPARK_LED = (cnt_led == 24'd15_000_000);
@@ -41,14 +39,18 @@ reg clk = 1'b1;
 reg mosi = 1'b0;
 
 reg [11 : 0] cnt_half_per; // 500 kHz <=> 100; 7 kHz ~ 7142
-reg [3 : 0] cnt_data;
+reg [3 : 0] cnt_byte;
 reg [4 : 0] cnt_edge;
 
-reg [1:0] miso;
-reg [1:0] ack;
+reg [7 : 0] req_data;
+reg [1 : 0] miso;
+reg [1 : 0] ack;
 
 reg tx_st;
-reg [7 : 0] tx_byte;
+reg [3 : 0] cnt_tran_byte;
+reg [7 : 0] tx_byte [0 : 8];
+
+reg [1 : 0] tran_busy;
 
 `ifdef MODEL_TECH
 	wire KEY_PR = iKEY_ST;
@@ -57,15 +59,19 @@ reg [7 : 0] tx_byte;
 `endif
 	
 wire HALF_PER = (cnt_half_per == `HALF_PER_TIME);
-wire ONE_BYTE = (cnt_edge == 5'd25);
 
-wire FIRST_BYTE = (cnt_data == 4'd0);
-wire SEC_BYTE = (cnt_data == 4'd1);
-wire END_PACKET = (cnt_data == 4'd8);
+wire ONE_BYTE = (cnt_edge == 5'd25);
+wire ACT_TRANS = (cnt_edge < 5'd16); // active stage of SPI
+
+wire FIRST_BYTE = (cnt_byte == 4'd0);
+wire SEC_BYTE = (cnt_byte == 4'd1);
+wire END_PACKET = (cnt_byte == 4'd9);
 
 wire TRAN_BUSY;
+wire TRAN_BUSY_FALL = (tran_busy[0] & !tran_busy[1]);
+wire TRAN_LAST_BYTE = (cnt_tran_byte == 4'd8);
 
-wire EN_SPI = (en & !TRAN_BUSY & !END_PACKET);
+wire EN_SPI = (en & !TRAN_BUSY & !END_PACKET & !tx_st & (cnt_tran_byte == 4'd0));
 
 always@(posedge iCLK or negedge iRESET)begin
 	if(!iRESET) en <= 1'b0;
@@ -75,22 +81,29 @@ end
 // uart:
 always@(posedge iCLK or negedge iRESET)begin
 	if(!iRESET) tx_st <= 1'b0;
-	
-`ifdef DEBUG
-	else if(!TRAN_BUSY & SPARK_LED) tx_st <= 1'b1;
-`endif
-	else if(END_PACKET) tx_st <= 1'b1;
-
+	else if(END_PACKET | ((cnt_tran_byte > 4'd0) & TRAN_BUSY_FALL)) tx_st <= 1'b1;
 	else tx_st <= 1'b0;
 end
 
-always@(posedge iCLK or negedge iRESET)begin
-	if(!iRESET) tx_byte <= 8'd0;
-	
-`ifdef DEBUG
-	else if(SPARK_LED) tx_byte <= tx_byte + 1'b1;
-`endif
+genvar i;
+generate
+	for(i = 0; i < 9; i = i + 1)begin: gen
+		always@(posedge iCLK or negedge iRESET)begin
+			if(!iRESET) tx_byte[i] <= 0;
+			else if(ONE_BYTE & (cnt_byte == i)) tx_byte[i] <= req_data;
+		end		
+	end
+endgenerate
 
+always@(posedge iCLK or negedge iRESET)begin
+	if(!iRESET) cnt_tran_byte <= 4'b0;
+	else if(TRAN_LAST_BYTE) cnt_tran_byte <= 4'b0;
+	else if(tx_st) cnt_tran_byte = cnt_tran_byte + 1'b1;
+end
+
+always@(posedge iCLK or negedge iRESET)begin
+	if(!iRESET) tran_busy <= 2'b0;
+	else tran_busy <= {tran_busy[0], !TRAN_BUSY};
 end
 
 // spi counters:
@@ -115,13 +128,13 @@ always@(posedge iCLK or negedge iRESET)begin
 end
 
 always@(posedge iCLK or negedge iRESET)begin
-	if(!iRESET) cnt_data <= 4'd0;
+	if(!iRESET) cnt_byte <= 4'd0;
 	else if(!cs)
 		begin
-			if(ONE_BYTE) cnt_data <= cnt_data + 1'b1;
-			else if(END_PACKET) cnt_data <= 4'd0;
+			if(ONE_BYTE) cnt_byte <= cnt_byte + 1'b1;
+			else if(END_PACKET) cnt_byte <= 4'd0;
 		end
-	else cnt_data <= 4'd0;
+	else cnt_byte <= 4'd0;
 end
 
 // spi:
@@ -132,13 +145,14 @@ always@(posedge iCLK or negedge iRESET)begin
 			if(FIRST_BYTE) cs <= 1'b0;
 			else if(END_PACKET) cs <= 1'b1;
 		end
+	else cs <= 1'b1;
 end
 
 always@(posedge iCLK or negedge iRESET)begin
 	if(!iRESET) clk <= 1'b1;
 	else if(!cs)
 		begin
-			if(HALF_PER & (cnt_edge <= 5'd15)) clk <= ~clk;
+			if(HALF_PER & ACT_TRANS) clk <= ~clk;
 		end
 	else clk <= 1'b1;
 end
@@ -155,6 +169,24 @@ always@(posedge iCLK or negedge iRESET)begin
 	else mosi <= 1'b0;
 end
 
+// shift reg:
+always@(posedge iCLK or negedge iRESET)begin
+	if(!iRESET) miso <= 2'd0;
+	else miso <= {miso[0], iMISO};
+end
+
+wire FRONT_CLK = (HALF_PER & cnt_edge[0]);
+
+always@(posedge iCLK or negedge iRESET)begin
+	if(!iRESET) req_data <= 8'd0;  // all data issue and recieve LSB
+	else if(!cs)
+		begin
+			if(FRONT_CLK & ACT_TRANS) req_data <= {req_data[6:0], miso[1]}; // latch data on front CLK
+		end
+	else req_data <= 8'd0;
+end
+
+// led:
 `ifndef MODEL_TECH
 	always@(posedge iCLK or negedge iRESET)begin
 		if(!iRESET) cnt_led <= 24'd0;
@@ -167,12 +199,17 @@ end
 		else if(SPARK_LED) led[0] <= ~led[0];
 	end
 	
-psone_debounce DEB(
-    .iCLK(iCLK), 
-	 .iRESET(iRESET), 
-	 .iKEY(iKEY_ST),      
-    .oKEY_FRONT(KEY_PR)
-);
+	always@(posedge iCLK or negedge iRESET)begin
+		if(!iRESET) led[1] <= 1'b0;
+		else if(KEY_PR) led[1] <= ~led[1];
+	end
+	
+	psone_debounce DEB(
+		 .iCLK(iCLK), 
+		 .iRESET(iRESET), 
+		 .iKEY(iKEY_ST),      
+		 .oKEY_FRONT(KEY_PR)
+	);
 `endif
 
 psone_uart UART(
@@ -183,7 +220,7 @@ psone_uart UART(
     .oTX(oTX),
 	 
     .iTRAN_ST(tx_st), // Signal to transmit
-    .iTX_BYTE(tx_byte), // Byte to transmit
+    .iTX_BYTE(tx_byte[cnt_tran_byte]), // Byte to transmit
 	 
     .oREC_END(), // Indicated that a byte has been received.
     .oRX_BYTE(), // Byte received

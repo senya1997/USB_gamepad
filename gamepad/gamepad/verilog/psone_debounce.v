@@ -54,7 +54,7 @@ always@(posedge iCLK or negedge iRESET)begin
 end  
 
 always@(posedge iCLK or negedge iRESET)begin
-	if(!iRESET) key_deb <= 0;
+	if(!iRESET) key_deb <= 1'b0;
 	else if(delaycount_reg[N-1] == 1'b1) key_deb <= dff[1];
 	else key_deb <= key_deb;
 end
