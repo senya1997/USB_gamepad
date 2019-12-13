@@ -1,7 +1,7 @@
 `ifdef MODEL_TECH
 	`define HALF_PER_TIME 10 
 `else
-	`define HALF_PER_TIME 250 
+	`define HALF_PER_TIME 2000 
 `endif
 
 module psone(
@@ -21,12 +21,12 @@ module psone(
 	
 `ifndef MODEL_TECH
 	,
-	output [1 : 0] oLED
+	output oIND
 `endif	
 );
 
 `ifndef MODEL_TECH
-	reg [1 : 0] led;
+	reg led;
 	reg [23 : 0] cnt_led;
 	
 	wire SPARK_LED = (cnt_led == 24'd15_000_000);
@@ -193,17 +193,17 @@ end
 		else if(SPARK_LED) cnt_led <= 24'd0;
 		else cnt_led <= cnt_led + 24'd1;
 	end
+/*
+	always@(posedge iCLK or negedge iRESET)begin
+		if(!iRESET) led <= 1'b0;
+		else if(SPARK_LED) led <= ~led;
+	end
+*/	
+	always@(posedge iCLK or negedge iRESET)begin
+		if(!iRESET) led <= 1'b0;
+		else if(KEY_PR) led <= ~led;
+	end
 
-	always@(posedge iCLK or negedge iRESET)begin
-		if(!iRESET) led[0] <= 1'b0;
-		else if(SPARK_LED) led[0] <= ~led[0];
-	end
-	
-	always@(posedge iCLK or negedge iRESET)begin
-		if(!iRESET) led[1] <= 1'b0;
-		else if(KEY_PR) led[1] <= ~led[1];
-	end
-	
 	psone_debounce DEB(
 		 .iCLK(iCLK), 
 		 .iRESET(iRESET), 
@@ -236,7 +236,7 @@ assign oCLK = clk;
 assign oMOSI = mosi;
 
 `ifndef MODEL_TECH
-	assign oLED = led;
+	assign oIND = led;
 `endif
 
 endmodule 
