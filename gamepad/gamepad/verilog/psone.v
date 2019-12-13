@@ -5,6 +5,7 @@
 `else
 	`define HALF_PER_TIME 500 
 `endif
+
 module psone(
 	input		iCLK,
 	input		iRESET,
@@ -56,7 +57,7 @@ reg [7 : 0] tx_byte;
 `endif
 	
 wire HALF_PER = (cnt_half_per == `HALF_PER_TIME);
-wire ONE_BYTE = (cnt_edge == 5'd20);
+wire ONE_BYTE = (cnt_edge == 5'd25);
 
 wire FIRST_BYTE = (cnt_data == 4'd0);
 wire SEC_BYTE = (cnt_data == 4'd1);
@@ -64,7 +65,7 @@ wire END_PACKET = (cnt_data == 4'd8);
 
 wire TRAN_BUSY;
 
-wire EN_SPI = (en & !TRAN_BUSY);
+wire EN_SPI = (en & !TRAN_BUSY & !END_PACKET);
 
 always@(posedge iCLK or negedge iRESET)begin
 	if(!iRESET) en <= 1'b0;
@@ -166,19 +167,11 @@ end
 		else if(SPARK_LED) led[0] <= ~led[0];
 	end
 	
-wire KEY_BUF;
 psone_debounce DEB(
     .iCLK(iCLK), 
 	 .iRESET(iRESET), 
 	 .iKEY(iKEY_ST),      
-    .oKEY(KEY_BUF)
-);
-
-psone_keyfront KEY_FRONT(
-	.iCLK(iCLK),
-	.iRESET(iRESET),
-	.iKEY(KEY_BUF),
-	.oPRESS(KEY_PR)	
+    .oKEY_FRONT(KEY_PR)
 );
 `endif
 
