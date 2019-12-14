@@ -1,7 +1,7 @@
 `ifdef MODEL_TECH
 	`define HALF_PER_TIME 10 
 `else
-	`define HALF_PER_TIME 2000 
+	`define HALF_PER_TIME 3500 
 `endif
 
 module psone(
@@ -38,7 +38,7 @@ reg cs = 1'b1;
 reg clk = 1'b1;
 reg mosi = 1'b0;
 
-reg [11 : 0] cnt_half_per; // 500 kHz <=> 100; 7 kHz ~ 7142
+reg [11 : 0] cnt_half_per; // 500 kHz <=> 100; 7 kHz ~ 3571
 reg [3 : 0] cnt_byte;
 reg [4 : 0] cnt_edge;
 
@@ -69,7 +69,7 @@ wire END_PACKET = (cnt_byte == 4'd9);
 
 wire TRAN_BUSY;
 wire TRAN_BUSY_FALL = (tran_busy[0] & !tran_busy[1]);
-wire TRAN_LAST_BYTE = (cnt_tran_byte == 4'd8);
+wire TRAN_LAST_BYTE = (cnt_tran_byte == 4'd9);
 
 wire EN_SPI = (en & !TRAN_BUSY & !END_PACKET & !tx_st & (cnt_tran_byte == 4'd0));
 
