@@ -385,8 +385,6 @@ config.properties
 *.cmp
 *.eqn
 *.html
-*.jpg
-*.png
 *.bak
 *.qar
 *.sopc_builder
@@ -433,7 +431,6 @@ timing/
 **/**/*.cmp
 **/**/*.eqn
 **/**/*.html
-**/**/*.jpg
 **/**/*.bak
 **/**/*.qar
 **/**/*.sopc_builder
