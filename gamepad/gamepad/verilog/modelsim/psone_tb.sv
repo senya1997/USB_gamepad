@@ -56,7 +56,7 @@ end
 
 always@(negedge DUT.clk)begin
 	cur_data = data[DUT.cnt_byte];
-	miso = cur_data[7 - ((DUT.cnt_edge - 1) >> 1)]; // LSB, issue on fall, latch on front
+	miso = cur_data[((DUT.cnt_edge - 1) >> 1)]; // LSB, issue on fall, latch on front
 	
 	$display("\tcur_data: 0x%2h, bit: 0b%1b, time: %t", cur_data, miso, $time);
 end

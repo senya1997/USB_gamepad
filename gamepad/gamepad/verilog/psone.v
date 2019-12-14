@@ -181,7 +181,7 @@ always@(posedge iCLK or negedge iRESET)begin
 	if(!iRESET) req_data <= 8'd0;  // all data issue and recieve LSB
 	else if(!cs)
 		begin
-			if(FRONT_CLK & ACT_TRANS) req_data <= {req_data[6:0], miso[1]}; // latch data on front CLK
+			if(FRONT_CLK & ACT_TRANS) req_data <= {miso[1], req_data[7 : 1]}; // latch data on front CLK
 		end
 	else req_data <= 8'd0;
 end
