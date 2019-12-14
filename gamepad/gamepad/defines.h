@@ -60,7 +60,7 @@
 		#define SEGA_A_B	4 /* PIN 6 */
 		#define SEGA_ST_C	5 /* PIN 9 */
 	
-		#define SEGA_SEL	7 /* PIN 7 this PIN must not go on PS controller PINS */
+		#define SEGA_SEL	7 /* PIN 7 this PIN must not coincide with PS controller PINs */
 	
 	// mask data from "state" table on spec SEL state (see "state" comment in "main.c"):
 		#define LF_RG_MASK	0b00000011
@@ -97,15 +97,15 @@
 	#define DDR_PS DDRC
 	#define PIN_PS PINC
 	
-	// original controllers use 3.3 V
+	// controllers use 3.3 V
 	// no one pins number must not coincide with SEL pin SEGA controller
 		#define PS_MISO 0 /* Pin 1: "DATA", always "0" pin MC, must be pullup to 3.3 or 5 V through 1kOhm */
 		#define PS_MOSI 1 /* Pin 2: "CMD" */
 		#define PS_CS	2 /* Pin 6: "ATT", attention new packet */
 		#define PS_CLK	3 /* Pin 7: ~7 kHz */
 		#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
-	#ifdef DUBUG
+	#ifdef DEBUG
 		#define PS_DEBUG 5
 	#endif
 	
-	#define CLK_HALF_PER 2300 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */
+	#define CLK_HALF_PER 1150 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */

@@ -1,6 +1,5 @@
 ﻿using System;
 using System.IO.Ports;
-using System.Text;
 
 namespace gp_test
 {
@@ -22,7 +21,6 @@ namespace gp_test
             bool is_int;
 
             string[] all_port = SerialPort.GetPortNames();
-            string ans;
             string str_temp;
             
             buf_temp[0] = 0;
@@ -57,17 +55,9 @@ namespace gp_test
                 Console.WriteLine("\nChoose port again");
                 goto READ_NUM;
             }
-
-REPEAT:     ans = Console.ReadLine();
-            if (ans == "ex")
-            {
-                port.Close();
-
-                Console.Clear();
-                Console.WriteLine("Press any key...");
-                Console.ReadKey();
-            }
-            else goto REPEAT;
+            
+            Console.ReadKey();
+            port.Close();
         }
 
         private static void Port_DataReceived(object sender, SerialDataReceivedEventArgs e)
