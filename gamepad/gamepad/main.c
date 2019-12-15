@@ -57,7 +57,7 @@ uchar cnt_idle = 0;
 	uchar offset;
 	
 	//uchar flag_upd_cnt = 0;
-	uchar flag_ps = 1; // analog "flag_sega"
+	uchar flag_ps = 0; // analog "flag_sega"
 	
 /*********************************************************************************/
 /* CLK ~ 7 kHz, issue data LSB on MISO and MOSI on falling edge, read on front   */
@@ -263,8 +263,8 @@ void hardware_PS_Init()
 // add pullup on inputs and issue one on outputs:
 // 				***** ATTENTION *****
 // on MISO PULLUP external and must be turn off on mc
-	PORT_PS &= ~(1 << PS_ACK) & ~(1 << PS_MISO); // no pullup
-	PORT_PS = (1 << PS_CS) | (1 << PS_CLK);
+	//PORT_PS &= ~(1 << PS_ACK) & ~(1 << PS_MISO); // no pullup
+	PORT_PS = (1 << PS_CS) | (1 << PS_CLK) | (1 << PS_MISO);
 	
 // for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
 	TCCR1B = (1 << WGM12) | (1 << CS10); // CTC mode with OCR1A, presc = 1 => half period CLK 71.4285 us <=> 1142.856 cnt
@@ -306,8 +306,10 @@ ISR(TIMER1_COMPA_vect)
 	if((cnt_byte > 3) & ACT_TRANS & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
 	{
 		//shift_report_buf[cnt_byte - 4] |= (PIN_PS & (1 << PS_MISO)) << ((cnt_edge - 1) >> 1);
-		shift_report_buf[cnt_rep_buf] |= (PIN_PS & (1 << PS_MISO)) << offset;
 		
+		offset = (cnt_edge - 1) >> 1;
+		shift_report_buf[cnt_rep_buf] |= (PIN_PS & 0x01) << offset;
+		//shift_report_buf[cnt_rep_buf]++;
 		#ifdef DEBUG
 			PORT_PS ^= (1 << PS_DEBUG);
 		#endif
@@ -340,7 +342,7 @@ ISR(TIMER1_COMPA_vect)
 		}
 		else cnt_edge++;
 	}
-	else if((cnt_byte == 1) | (cnt_byte == 2))
+	else if((cnt_byte > 0) & (cnt_byte < 4)) // > 0 & < 4
 	{
 		if(ONE_BYTE)
 		{
@@ -364,11 +366,7 @@ ISR(TIMER1_COMPA_vect)
 			}
 			else cnt_byte++;
 		}
-		else
-		{
-			offset = (cnt_edge - 1) >> 1;
-			cnt_edge++;
-		}
+		else cnt_edge++;
 	}
 	
 	//flag_upd_cnt = 1;
@@ -408,7 +406,7 @@ ISR(TIMER2_COMPA_vect)
 
 void main()
 {
-	uchar flag_first_run = 0;
+	uchar flag_first_run = 1;
 	
 	#ifdef DEBUG
 		#ifdef DEBUG_SEGA
@@ -430,6 +428,12 @@ void main()
 	#endif
 	
 	hardware_SEGA_Init();
+	
+	
+	
+	
+	
+	
 	
 	#ifndef DEBUG
 		usbDeviceConnect();
