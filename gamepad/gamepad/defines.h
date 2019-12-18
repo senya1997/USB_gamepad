@@ -108,4 +108,5 @@
 		#define PS_DEBUG 5
 	#endif
 	
-	#define CLK_HALF_PER 1150 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */
+	#define CLK_HALF_PER 200 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */
+	#define DELTA 50
