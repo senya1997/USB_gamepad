@@ -69,7 +69,7 @@ const uchar PROGMEM desc_conf[] = {
 };
 
 // CAUTION: when changing report descriptor do not remember change "REPORT SIZE" define according with new form report packet
-//			and REPORT_DECRIPTOR_LENGT in "usbconfig.h"
+//			and "REPORT_DECRIPTOR_LENGT" in "usbconfig.h"
 const char PROGMEM usbDescriptorHidReport[USB_CFG_HID_REPORT_DESCRIPTOR_LENGTH] = {
 	0x05, 0x01,			// USAGE_PAGE (Generic Desktop)
 	0x09, 0x05,			// USAGE (Game Pad)

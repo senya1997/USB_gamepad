@@ -3,7 +3,7 @@
 //#define DEBUG
 //#define PROTEUS
 	//#define DEBUG_SEGA
-	#define DEBUG_PS
+	//#define DEBUG_PS
 
 #ifdef PROTEUS
 	#define DEBUG
@@ -77,12 +77,10 @@
 	#define SEGA_PIN_MASK 0b00111111 /* e.g. if SEGA buttons PIN match "PORTB 0..6" => MASK = 0b00111111, */
 									 /* because last 2 bits on PORTB - TOSC 1,2 */
 									 
-	#define SEGA_ON 0b10000000	/* spec combination of pressed key 2nd pl SEGA controller, that activate SEGA MODE */
-								/* e.g. required press START to activate SEGA MODE before and after connect device */
+	#define PS_ON 0b10000000	/* spec combination of pressed key 1st pl SEGA controller, that activate PS MODE */
+								/* e.g. required press START to activate PS MODE before and after connect device */
 								/* on 2-3 sec. START  polling on "state = 2" and in report(4) with pressed key START */
 								/* will be "0b1000000" (defined by "upd_SEGA_ReportBuf" func and "state" table in "main.c") */
-	#define PS_ON 0b00000001 /* spec combination of pressed key 1st pl SEGA controller, that activate PS MODE (2nd pl */
-							 /* use PORT PS). Analog "SEGA_ON" comment */
 		
 	#define PER_POLL_GP		30	/* period of SEL signal for gamepad in cnt of timer 2 with presc */
 	#define DELAY_BTW_POLL	255	/* delay between packets 0..7 of SEL signal in cnt of timer 2 with presc, */
@@ -103,10 +101,16 @@
 		#define PS_MOSI 1 /* Pin 2: "CMD" */
 		#define PS_CS	2 /* Pin 6: "ATT", attention new packet */
 		#define PS_CLK	3 /* Pin 7: ~7 kHz */
-		#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
+		//#define PS_ACK	4 /* Pin 9: acknowledge, must be pullup to 3.3 or 5 V through 1kOhm */
+		
 	#ifdef DEBUG
 		#define PS_DEBUG 5
 	#endif
+	
+	#define END_ONE_BYTE	(cnt_edge == 18)
+	#define ACT_TRANS		(cnt_edge < 16)
+	#define IDLE_STATE		(cnt_edge == 15)
+	#define LAST_BYTE		(cnt_byte == 9)
 	
 	#define CLK_HALF_PER 200 /* in cnt of timer 2 with presc, required get half per ~ 71.4285 us, smaller - better */
 	#define DELTA 50
