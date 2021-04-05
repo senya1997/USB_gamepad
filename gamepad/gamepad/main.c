@@ -20,8 +20,11 @@ uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00};  // 1st pl
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
 
+uchar flag_ps = 0;
 uchar flag_idle = 0; // shows that idle time is over and can send report
 uchar flag_report = 0;
+uchar flag_first_run = 1;	// to enable PS controllers, hold START on SEGA 1st controller before and after connect device to PC on 2-3 sec
+							// otherwise by default work SEGA controller mode
 
 // SEGA var and protocol:
 	uchar state = 0; // 0..7 states
@@ -135,7 +138,7 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 	
 	return 1;
 }
-
+ 
 void hardware_SEGA_Init()
 {
 	DDR_LED = (1 << LED0) | (1 << LED1);
@@ -152,16 +155,14 @@ void hardware_SEGA_Init()
 	
 	// timers:
 		// for idle time:
-			TCCR0A = (1 << WGM01); // CTC mode with OCRA
-			TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
-			OCR0A = STEP_IDLE_CONF;
+			TCCR1B = (1 << CS10);
 	
 		// for SEGA SEL clock:
 			TCCR2A = (1 << WGM21); // CTC mode with OCRA
 			TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
 			OCR2A = PER_POLL_GP;
 	
-	TIMSK0 = (1 << OCIE0A);
+	TIMSK1 = (1 << TOIE1); // turn on interrupt idle time
 	TIMSK2 = (1 << OCIE2A);
 }
 
@@ -169,18 +170,30 @@ void hardware_PS_Init()
 {
 	PORT_LED &= ~(1 << LED1); // PS mode
 	
-	// this func call after "hardware_SEGA_init"
-		DDR_PS = (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK); // outputs
-		DDR_PS &= ~(1 << PS_MISO); // inputs
+// this func call after "hardware_SEGA_init" when PS mode is activating
+	#ifdef DEBUG
+		DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK) | (1 << PS_DEBUG); // outputs
+	#else
+		DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	#endif
 
-	// add pullup on inputs and issue one on outputs:
-		PORT_PS = (1 << PS_MISO) | (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+// add pullup on inputs and issue one on outputs:
+// 				***** ATTENTION *****
+// on MISO PULLUP external and must be turn off on mc
+	PORT_PS &= ~(1 << PS_MISO); // no pullup
+	PORT_PS = (1 << PS_CS) | (1 << PS_CLK);
 	
-	// for PS CLK:
-		TCCR2A = (1 << WGM21); // CTC mode with OCRA
-		TCCR2B = (1 << CS20) | (1 << CS22); // presc = 128 => 2 ms <=> 250 cnt; 500 us <=> 62.5
-		OCR2A = PER_POLL_GP;
+	// timers:
+		// reinit main timer:
+			TCCR0A = (1 << WGM01);
+			TCCR0B = (1 << CS01); // presc = 8 => 70 us <=> 140 cnt
+			OCR0A = CLK_HALF_PER + DELTA;
+		// for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
+			TCCR2A = (1 << WGM21); // CTC mode with OCR2A
+			TCCR2B = (1 << CS21); // presc = 8 => half period CLK 70 us <=> 140 cnt
+			OCR2A = CLK_HALF_PER;
 	
+	TIMSK0 = (1 << OCIE0A); // use interrupt is only for flag, without transfer on vector
 	TIMSK2 = (1 << OCIE2A);
 }
 
@@ -230,23 +243,29 @@ inline void clearShiftBuf()
 	TIFR0 |= (1 << OCF0A);
 }
 
-ISR(TIMER0_COMPA_vect)
+ISR(TIMER1_OVF_vect) // idle time on PS mode
 {
-	TIMSK2 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
-		sei();
-		
-		if(cnt_idle < delay_idle) cnt_idle++;
-		else
-		{
-			TIMSK0 &= ~(1 << OCIE0A);
-			flag_idle = 1;
-		}
-	TIMSK2 |= (1 << OCIE2A); // "sei"
+	TIMSK0 &= ~(1 << OCIE0A);
+	TIMSK2 &= ~(1 << OCIE2A);
+	
+	sei();
+	
+	if(cnt_idle < delay_idle) cnt_idle++;
+	else
+	{
+		TIMSK1 &= ~(1 << TOIE1);
+		flag_idle = 1;
+	}
+	
+	if(flag_ps) TIMSK0 |= (1 << OCIE0A); // for avoid go on void vector on SEGA mode
+	TIMSK2 |= (1 << OCIE2A);
 }
 
-ISR(TIMER2_COMPA_vect)
+ISR(TIMER2_COMPA_vect) // SEL signal SEGA gp
 {
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
+	TIMSK1 &= ~(1 << TOIE1);
+	
 		sei();
 	
 		if(state < 7) 
@@ -271,27 +290,10 @@ ISR(TIMER2_COMPA_vect)
 			state = 8;
 		}
 	TIMSK0 |= (1 << OCIE0A); // "sei"
+	TIMSK1 |= (1 << TOIE1);
 }
 
-ISR(TIMER1_OVF_vect)
-{
-	TIMSK0 &= ~(1 << OCIE0A);
-	TIMSK2 &= ~(1 << OCIE2A);
-	
-	sei();
-	
-	if(cnt_idle < delay_idle) cnt_idle++;
-	else
-	{
-		TIMSK1 &= ~(1 << TOIE1);
-		flag_idle = 1;
-	}
-	
-	TIMSK0 |= (1 << OCIE0A);
-	TIMSK2 |= (1 << OCIE2A);
-}
-
-ISR(TIMER2_COMPA_vect)
+ISR(TIMER2_COMPA_vect) // SPI signals PS gp
 {
 	TCNT0 = 5; // reset duplicate timer
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
@@ -362,9 +364,7 @@ ISR(TIMER2_COMPA_vect)
 
 void main_PS(void) // if activate PS mode by spec key combination on SEGA controller
 {
-	char flag_report_rdy = 0;
-	
-	cli();
+	uchar flag_report_rdy = 0;
 	
 	hardware_PS_Init();
 	
@@ -376,7 +376,9 @@ void main_PS(void) // if activate PS mode by spec key combination on SEGA contro
 		TIFR0 |= (1 << OCF0A);
 		TIFR1 |= (1 << TOV1);
 		TIFR2 |= (1 << OCF2A);
-	
+		
+		GTCCR |= (1 << PSRASY);
+		
 	sei();
 	while (1)
 	{
@@ -427,20 +429,12 @@ void main_PS(void) // if activate PS mode by spec key combination on SEGA contro
 		}
 		
 		if((report_buf[4] != 0x00) | (report_buf[5] != 0x00)) PORT_LED ^= (1 << LED0);
-		
-		if((cnt_byte == 0) & (cnt_edge == 10))
-		{
-			usbPoll();
-		}
+		if((cnt_byte == 0) & (cnt_edge == 10)) usbPoll();
 	}
 }
 
 void main(void)
 {
-	// to enable PS controllers, hold START on SEGA 1st controller before and after connect device to PC on 2-3 sec
-	// otherwise by default work SEGA controller mode
-	uchar flag_first_run = 1;
-	
 	#ifdef DEBUG
 		uchar gp_state_buf[2][8] = {0x00, 0x00, 0x10, 0x15, 0x00, 0x0A, 0x00, 0x00,
 									0x00, 0x00, 0x20, 0x2A, 0x00, 0x05, 0x00, 0x00};
@@ -456,11 +450,11 @@ void main(void)
 	#endif
 	
 	// full reset timers:
-		TCNT0 = 0;
+		TCNT1 = 0;
 		TCNT2 = 0;
 	
 	// reset interrupt timers flags:
-		TIFR0 |= (1 << OCF0A);
+		TIFR1 |= (1 << TOV1);
 		TIFR2 |= (1 << OCF2A);
 	
 		GTCCR |= (1 << PSRASY); // reset presc timers
@@ -483,10 +477,10 @@ void main(void)
 				cnt_idle = 0;
 				flag_idle = 0;
 				
-				// full reset timer 0 then enable interrupt:
-				TCNT0 = 0;
-				TIFR0 |= (1 << OCF0A);
-				TIMSK0 |= (1 << OCIE0A);
+				// full reset idle timer then enable interrupt:
+				TCNT1 = 0;
+				TIFR1 |= (1 << TOV1);
+				TIMSK1 |= (1 << TOIE1);
 			}
 		}
 		
@@ -501,6 +495,8 @@ void main(void)
 				
 				if((report_buf[4] != PS_ON))
 				{
+					cli(); // if PS mode is activate - should disable interrupts for reinit mc
+					flag_ps = 1;
 					main_PS();
 				}
 			}
