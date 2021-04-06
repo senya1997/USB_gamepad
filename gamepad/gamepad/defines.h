@@ -1,16 +1,10 @@
 #define F_CPU 16000000L
 
-//#define DEBUG
+#define DEBUG
 //#define PROTEUS
-	//#define DEBUG_SEGA
-	//#define DEBUG_PS
 
 #ifdef PROTEUS
 	#define DEBUG
-#endif
-
-#ifdef DEBUG_PS
-	#undef DEBUG_SEGA
 #endif
 
 #define REPORT_SIZE 6 
