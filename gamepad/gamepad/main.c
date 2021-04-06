@@ -2,7 +2,6 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
-#include <util/delay.h>
 
 #include "usbdrv/usbdrv.h"
 #include "descriptor.h"
@@ -21,7 +20,7 @@ uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
 uchar cnt_idle = 0;
 
 uchar flag_ps = 0;
-uchar flag_idle = 0; // shows that idle time is over and can send report
+uchar flag_idle = 0; // shows that idle time is over and can send report ??? mb in PS mode flag idle is not required
 uchar flag_report = 0;
 uchar flag_first_run = 1;	// to enable PS controllers, hold START on SEGA 1st controller before and after connect device to PC on 2-3 sec
 							// otherwise by default work SEGA controller mode
@@ -243,84 +242,67 @@ inline void clearShiftBuf()
 	TIFR0 |= (1 << OCF0A);
 }
 
-ISR(TIMER1_OVF_vect) // idle time on PS mode
+inline void SEL_SEGA_control()
 {
-	TIMSK0 &= ~(1 << OCIE0A);
-	TIMSK2 &= ~(1 << OCIE2A);
+	//TIMSK0 &= ~(1 << OCIE0A); // this timer is using by PS only
+	TIMSK1 &= ~(1 << TOIE1); // "cli"
 	
 	sei();
 	
-	if(cnt_idle < delay_idle) cnt_idle++;
-	else
+	if(state < 7)
 	{
-		TIMSK1 &= ~(1 << TOIE1);
-		flag_idle = 1;
+		PORT_SEGA_AUX ^= (1 << SEGA_SEL);
+		
+		flag_ch_gp = 1;
+		state++;
+	}
+	else if(state == 8)
+	{ // after delay between "packets":
+		OCR2A = PER_POLL_GP;
+		flag_ch_gp = 1;
+		state = 0;
+	}
+	else
+	{ // after "packet":
+		PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
+		OCR2A = DELAY_BTW_POLL;
+		
+		flag_report = 1;
+		state = 8;
 	}
 	
-	if(flag_ps) TIMSK0 |= (1 << OCIE0A); // for avoid go on void vector on SEGA mode
-	TIMSK2 |= (1 << OCIE2A);
+	//TIMSK0 |= (1 << OCIE0A);
+	TIMSK1 |= (1 << TOIE1); // "sei"
 }
 
-ISR(TIMER2_COMPA_vect) // SEL signal SEGA gp
-{
-	TIMSK0 &= ~(1 << OCIE0A); // "cli"
-	TIMSK1 &= ~(1 << TOIE1);
-	
-		sei();
-	
-		if(state < 7) 
-		{
-			PORT_SEGA_AUX ^= (1 << SEGA_SEL);
-		
-			flag_ch_gp = 1;
-			state++;
-		}
-		else if(state == 8)
-		{ // after delay between "packets":
-			OCR2A = PER_POLL_GP;
-			flag_ch_gp = 1;
-			state = 0;
-		}
-		else
-		{ // after "packet":
-			PORT_SEGA_AUX &= ~(1 << SEGA_SEL);
-			OCR2A = DELAY_BTW_POLL;
-		
-			flag_report = 1;
-			state = 8;
-		}
-	TIMSK0 |= (1 << OCIE0A); // "sei"
-	TIMSK1 |= (1 << TOIE1);
-}
-
-ISR(TIMER2_COMPA_vect) // SPI signals PS gp
+inline void SPI_PS_control()
 {
 	TCNT0 = 5; // reset duplicate timer
 	TIMSK0 &= ~(1 << OCIE0A); // "cli"
-	
+		
 	sei();
-	
+		
 	if((TIFR0 & (1 << OCF0A)) == (1 << OCF0A)) clearShiftBuf();
-	
+		
 	// CLK:
 	if((cnt_byte > 0) & ACT_TRANS) PORT_PS ^= (1 << PS_CLK);
-	
+		
 	// MISO:
 	if((cnt_byte > 3) & ACT_TRANS & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
 	{
 		offset = (cnt_edge - 1) >> 1;
 		shift_report_buf[cnt_rep_buf] |= (PIN_PS & 0x01) << offset;
 	}
-	
+		
 	// MOSI:
 	if(((cnt_byte == 1) & (cnt_edge < 2)) |
 	((cnt_byte == 2) & ((cnt_edge == 2) | (cnt_edge == 3) | (cnt_edge == 12) | (cnt_edge == 13)))) PORT_PS |= (1 << PS_MOSI);
 	else PORT_PS &= ~(1 << PS_MOSI);
-	
+		
 	// CS:
 	if((cnt_byte == 0) & IDLE_STATE) PORT_PS &= ~(1 << PS_CS);
 	else if(LAST_BYTE & END_ONE_BYTE) PORT_PS |= (1 << PS_CS);
-	
+		
 	// counters - required go to ASM:
 	if(cnt_byte == 0) // between byte transmit
 	{
@@ -346,20 +328,44 @@ ISR(TIMER2_COMPA_vect) // SPI signals PS gp
 		{
 			cnt_edge = 0;
 			cnt_rep_buf--;
-			
+				
 			if(LAST_BYTE)
 			{
 				flag_report = 1;
 				cnt_byte = 0;
-				
+					
 				//TIMSK1 &= ~(1 << OCIE1A);
 			}
 			else cnt_byte++;
 		}
 		else cnt_edge++;
 	}
-	
+		
 	TIMSK0 |= (1 << OCIE0A); // "sei"
+}
+
+ISR(TIMER1_OVF_vect) // idle time (mb this interrupt only for SEGA)
+{
+	TIMSK0 &= ~(1 << OCIE0A);
+	TIMSK2 &= ~(1 << OCIE2A);
+	
+	sei();
+	
+	if(cnt_idle < delay_idle) cnt_idle++;
+	else
+	{
+		TIMSK1 &= ~(1 << TOIE1);
+		flag_idle = 1;
+	}
+	
+	if(flag_ps) TIMSK0 |= (1 << OCIE0A); // for avoid go on void vector on SEGA mode ??? if flag_ilde not required on PS mode - this condition is not required
+	TIMSK2 |= (1 << OCIE2A);
+}
+
+ISR(TIMER2_COMPA_vect)
+{
+	if(flag_ps)	SPI_PS_control();
+	else		SEL_SEGA_control();
 }
 
 void main_PS(void) // if activate PS mode by spec key combination on SEGA controller
@@ -397,7 +403,7 @@ void main_PS(void) // if activate PS mode by spec key combination on SEGA contro
 				//clearShiftBuf();
 				flag_report_rdy = 0;
 				
-				// full reset idle timer then enable interrupt:
+				// full reset idle timer then enable interrupt (mb this interrupt not required):
 				TCNT1 = 0;
 				TIFR1 |= (1 << TOV1);
 				TIMSK1 |= (1 << TOIE1);
