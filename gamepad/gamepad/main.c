@@ -455,10 +455,10 @@ void main(void)
 	
 	hardware_SEGA_Init();
 	
-	#ifndef DEBUG
-		usbDeviceConnect();
-		usbInit();
-	#endif
+	// #ifndef DEBUG
+		// usbDeviceConnect();
+		// usbInit();
+	// #endif
 	
 	// full reset timers:
 		TCNT1 = 0;
@@ -512,14 +512,20 @@ void main(void)
 				
 			if(flag_first_run)
 			{
+				cli();
+				#ifndef DEBUG
+					usbDeviceConnect();
+					usbInit();
+				#endif
+				
 				flag_first_run = 0;
 				
 				if((report_buf[4] == PS_ON))
 				{
-					cli(); // if PS mode is activate - should disable all interrupts for reinit mc
 					flag_ps = 1;
 					main_PS();
 				}
+				sei();
 			}
 			
 			flag_report = 0;
