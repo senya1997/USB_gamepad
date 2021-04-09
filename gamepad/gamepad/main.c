@@ -13,7 +13,7 @@
 #ifdef PROTEUS
 	#warning "PROTEUS SIM is enabled"
 #endif
-
+							//	 1pl(0, 1),	 2pl(2, 3),	1pl(4),2pl(5) 
 uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00};  // 1st pl axis, 2nd pl axis, 1st pl buttons, 2nd pl buttons
 	
 uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
@@ -196,29 +196,33 @@ void hardware_PS_Init()
 	TIMSK2 = (1 << OCIE2A);
 }
 
-void upd_SEGA_ReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
+uchar *upd_SEGA_ReportBuf(uchar offset, uchar *gp_state_ptr) // offset defines by player number: 1st - "0", 2nd - "8"
 {
-	uchar temp, pl_offset;
-	
-	if(offset == 0) pl_offset = 0;
-	else pl_offset = 2;
+	static uchar int_report_buf[3]; // internal report buf - 0 byte: D/U; 1 byte: L/R; 2 byte: ST,A,C,B,MD,X,Y,Z
+	register uchar temp_0, temp_1;
 	
 	// 2,3,5 - SEL number at which data were polling in protocol (see "state" comment)
-	temp = (~(*(gp_state_ptr + 3 + offset))) & LF_RG_MASK; // inv, because on SEGA 1 - not pressed; in descriptor 1 - pressed
+	temp_0 = (~(*(gp_state_ptr + 2 + offset))) & C_B_MASK; // 0b00110000
+		int_report_buf[2] = temp_0 << 2;
+
+	temp_0 = (~(*(gp_state_ptr + 5 + offset))) & ZYX_MD_MASK; // 0b00001111
+		int_report_buf[2] |= temp_0;
+
+	temp_0 = (~(*(gp_state_ptr + 3 + offset))) & (ST_A_MASK | LF_RG_MASK | UP_DW_MASK); // 0b00111111
+		int_report_buf[2] |= (temp_0 & ST_A_MASK);
 	
-		if(temp == LF_MASK) report_buf[1 + pl_offset] = 0xFF; // left
-		else if(temp == RG_MASK) report_buf[1 + pl_offset] = 0x00; // right
-		else report_buf[1 + pl_offset] = 0x7F;
+	temp_1 = (temp_0 & LF_RG_MASK);
+	temp_0 = (temp_0 & UP_DW_MASK);
 	
-	temp = (~(*(gp_state_ptr + 3 + offset))) & UP_DW_MASK;
+	if(temp_0 == UP_MASK)		int_report_buf[0] = 0xFF;
+	else if(temp_0 == DW_MASK)	int_report_buf[0] = 0x00;
+	else						int_report_buf[0] = 0x7F;
 	
-		if(temp == UP_MASK) report_buf[0 + pl_offset] = 0xFF; // up
-		else if(temp == DW_MASK) report_buf[0 + pl_offset] = 0x00; // down
-		else report_buf[0 + pl_offset] = 0x7F;
+	if(temp_1 == RG_MASK)		int_report_buf[1] = 0xFF;
+	else if(temp_1 == LF_MASK)	int_report_buf[1] = 0x00;
+	else						int_report_buf[1] = 0x7F;
 	
-	report_buf[4 + pl_offset/2] = (~(*(gp_state_ptr + 5 + offset))) & ZYX_MD_MASK;
-	report_buf[4 + pl_offset/2] |= (~(*(gp_state_ptr + 3 + offset))) & C_B_MASK;
-	report_buf[4 + pl_offset/2] |= ((~(*(gp_state_ptr + 2 + offset))) & ST_A_MASK) << 2;
+	return int_report_buf; // return pointer on massive
 }
 
 inline void clearShiftBuf()
@@ -441,6 +445,7 @@ void main_PS(void) // if activate PS mode by spec key combination on SEGA contro
 
 void main(void)
 {
+	uchar *report_buf_ptr;
 	#ifdef DEBUG
 		uchar gp_state_buf[2][8] = {0x00, 0x00, 0x10, 0x15, 0x00, 0x0A, 0x00, 0x00,
 									0x00, 0x00, 0x20, 0x2A, 0x00, 0x05, 0x00, 0x00};
@@ -492,16 +497,26 @@ void main(void)
 		
 		if(flag_report) // build report:
 		{
-			upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // 1st player
-			upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf); // 2nd player
+			//upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // 1st player
+			//upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf); // 2nd player
 			
+			report_buf_ptr = upd_SEGA_ReportBuf(0, (uchar *)gp_state_buf); // var that defining the array is also a pointer to it
+				report_buf[1] = *report_buf_ptr;
+				report_buf[0] = *(report_buf_ptr + 1);
+				report_buf[4] = *(report_buf_ptr + 2); // Buttons
+				
+			report_buf_ptr = upd_SEGA_ReportBuf(8, (uchar *)gp_state_buf);
+				report_buf[3] = *report_buf_ptr;
+				report_buf[2] = *(report_buf_ptr + 1);
+				report_buf[5] = *(report_buf_ptr + 2);
+				
 			if(flag_first_run)
 			{
 				flag_first_run = 0;
 				
-				if((report_buf[4] != PS_ON))
+				if((report_buf[4] == PS_ON))
 				{
-					cli(); // if PS mode is activate - should disable interrupts for reinit mc
+					cli(); // if PS mode is activate - should disable all interrupts for reinit mc
 					flag_ps = 1;
 					main_PS();
 				}

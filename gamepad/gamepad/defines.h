@@ -1,6 +1,6 @@
 #define F_CPU 16000000L
 
-#define DEBUG
+//#define DEBUG
 //#define PROTEUS
 
 #ifdef PROTEUS
@@ -71,7 +71,7 @@
 	#define SEGA_PIN_MASK 0b00111111 /* e.g. if SEGA buttons PIN match "PORTB 0..6" => MASK = 0b00111111, */
 									 /* because last 2 bits on PORTB - TOSC 1,2 */
 									 
-	#define PS_ON 0b10000000	/* spec combination of pressed key 1st pl SEGA controller, that activate PS MODE */
+	#define PS_ON 0b00100000	/* spec combination of pressed key 1st pl SEGA controller, that activate PS MODE */
 								/* e.g. required press START to activate PS MODE before and after connect device */
 								/* on 2-3 sec. START  polling on "state = 2" and in report(4) with pressed key START */
 								/* will be "0b1000000" (defined by "upd_SEGA_ReportBuf" func and "state" table in "main.c") */
