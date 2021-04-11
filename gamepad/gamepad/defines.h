@@ -9,7 +9,7 @@
 
 #define REPORT_SIZE 6
 
-#define STEP_IDLE_CONF	250	/* 4 ms step for calculate idle time in cnt of timer 0 with presc */
+#define STEP_IDLE_CONF	120	/* 4 ms step for calculate idle time in cnt of timer 0 with presc */
 #define INIT_IDLE_TIME	2	/* 100 <=> 400 ms in cnt of timer 0 */
 
 // for descriptors:
@@ -76,10 +76,10 @@
 									/* on 2-3 sec. START  polling on "state = 2" and in report(4) with pressed key START */
 									/* will be "0b1000000" (defined by "upd_SEGA_ReportBuf" func and "state" table in "main.c") */
 
-	#define PER_POLL_GP		20	/* period of SEL signal for gamepad in cnt of timer 2 with presc */
-	#define DELAY_BTW_POLL	150	/* delay between packets 0..7 of SEL signal in cnt of timer 2 with presc, */
+	#define PER_POLL_GP		25	/* period of SEL signal for gamepad in cnt of timer 2 with presc */
+	#define DELAY_BTW_POLL	100	/* delay between packets 0..7 of SEL signal in cnt of timer 2 with presc, */
 								/* for reset internal cnt in gamepad (minimum required 1.6 ms) */
-	#define DELAY_BEF_POLL	11	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 with presc */
+	#define DELAY_BEF_POLL	13	/* delay after front of SEL signal (before polling buttons) in cnt of timer 2 with presc */
 
 /************************************************************************************************************************/
 /*                                                         PS:                                                          */
