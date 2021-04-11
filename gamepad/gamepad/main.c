@@ -198,14 +198,12 @@ ISR(TIMER2_COMPA_vect)
 
 void main(void)
 {
-	/*
 	#ifdef DEBUG
 		uchar gp_state_buf[2][8] = {0x00, 0x00, 0x10, 0x15, 0x00, 0x0A, 0x00, 0x00,
 									0x00, 0x00, 0x20, 0x2A, 0x00, 0x05, 0x00, 0x00};
 	#else
-	*/
 		uchar gp_state_buf[2][8];
-	//#endif
+	#endif
 	
 	uchar *report_buf_ptr;
 
@@ -228,24 +226,26 @@ void main(void)
 	sei();
     while (1) 
     {
-		//#ifndef DEBUG
+		#ifndef DEBUG
 			usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
-		//#endif
+		#endif
 		
 		if(flag_idle) // send report immediately after "idle" time has passed:
 		{
 			if(usbInterruptIsReady())
 			{
-				//#ifndef DEBUG
+				#ifndef DEBUG
 					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~  us
-				//#endif
+				#endif
 				
-				//#ifdef PROTEUS
-				//	usbSetInterrupt(report_buf, REPORT_SIZE);
-				//#endif
+				#ifdef PROTEUS
+					usbSetInterrupt(report_buf, REPORT_SIZE);
+				#endif
 				
 				cnt_idle = 0;
 				flag_idle = 0;
+				
+				PORT_LED ^= (1 << LED0);
 				
 			// full reset timer 0 then enable interrupt:
 				TCNT0 = 0;
@@ -275,7 +275,5 @@ void main(void)
 			gp_state_buf[1][state] = PIN_SEGA2 & SEGA_PIN_MASK;
 			flag_ch_gp = 0;
 		}
-		
-		//if((report_buf[4] != 0x00) | (report_buf[5] != 0x00)) PORT_LED ^= (1 << LED0);
     }
 }
