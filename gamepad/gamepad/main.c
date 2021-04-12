@@ -159,7 +159,7 @@ inline void clearShiftBuf()
 	cnt_byte = 0;
 	
 	PORT_PS |= (1 << PS_CS) | (1 << PS_CLK);
-	TIFR0 |= (1 << OCF0A);
+	TIFR1 |= (1 << OCF1A);
 }
 
 void hardware_SEGA_Init()
@@ -202,10 +202,11 @@ inline void hardware_PS_Init()
 		PORT_PS = (1 << PS_CS) | (1 << PS_CLK);
 	
 	// duplicate main timer:
-		TCCR0A = (1 << WGM01);
-		TCCR0B = (1 << CS01); // presc = 8 => 70 us <=> 140 cnt
-		TIMSK0 = (1 << OCIE0A);
-		OCR0A = CLK_HALF_PER + DELTA;
+		TIMSK0 &= ~(1 << OCIE0A); // disable idle timer
+		
+		TCCR1B = (1 << WGM12) | (1 << CS11); // presc = 8 => 70 us <=> 140 cnt
+		TIMSK1 = (1 << OCIE1A);
+		OCR1A = CLK_HALF_PER + DELTA;
 	
 	// for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
 		TCCR2A = (1 << WGM21); // CTC mode with OCR2A
@@ -230,14 +231,14 @@ ISR(TIMER0_COMPA_vect) // SEGA idle time
 
 ISR(TIMER2_COMPA_vect)
 {
-	if(flag_ps)
+	if(flag_ps) // PS:
 	{
-		TCNT0 = 5; // reset duplicate timer
-		TIMSK0 &= ~(1 << OCIE0A); // "cli"
+		TCNT1 = 5; // reset duplicate timer
+		TIMSK1 &= ~(1 << OCIE1A); // "cli"
 	
 		sei();
 	
-		if((TIFR0 & (1 << OCF0A)) == (1 << OCF0A)) clearShiftBuf();
+		if((TIFR1 & (1 << OCF1A)) == (1 << OCF1A)) clearShiftBuf();
 	
 		// CLK:
 			if((cnt_byte > 0) & ACT_TRANS) PORT_PS ^= (1 << PS_CLK);
@@ -251,7 +252,7 @@ ISR(TIMER2_COMPA_vect)
 	
 		// MOSI:
 			if(((cnt_byte == 1) & (cnt_edge < 2)) |
-			((cnt_byte == 2) & ((cnt_edge == 2) | (cnt_edge == 3) | (cnt_edge == 12) | (cnt_edge == 13)))) PORT_PS |= (1 << PS_MOSI);
+			   ((cnt_byte == 2) & ((cnt_edge == 2) | (cnt_edge == 3) | (cnt_edge == 12) | (cnt_edge == 13)))) PORT_PS |= (1 << PS_MOSI);
 			else PORT_PS &= ~(1 << PS_MOSI);
 	
 		// CS:
@@ -296,9 +297,9 @@ ISR(TIMER2_COMPA_vect)
 				else cnt_edge++;
 			}
 	
-		TIMSK0 |= (1 << OCIE0A); // "sei"
+		TIMSK1 |= (1 << OCIE1A); // "sei"
 	}
-	else
+	else // SEGA:
 	{
 		TIMSK0 &= ~(1 << OCIE0A); // "cli"
 		sei();
@@ -340,10 +341,10 @@ void main_PS()
 	#endif
 	
 	// full reset timers:
-		TCNT0 = 0;
+		TCNT1 = 0;
 		TCNT2 = 0;
 	
-		TIFR0 |= (1 << OCF0A);
+		TIFR1 |= (1 << OCF1A);
 		TIFR2 |= (1 << OCF2A);
 	
 	sei();
