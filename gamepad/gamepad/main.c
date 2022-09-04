@@ -11,26 +11,14 @@
 	#warning "DEBUG is enabled"
 #endif
 
-#ifdef PROTEUS
-	#warning "PROTEUS SIM is enabled"
-#endif
+uchar report_buf[REPORT_SIZE] = {0x00, 0x00, 0x7F, 0x7F, 0x7F, 0x7F};
 
-uchar report_buf[REPORT_SIZE] = {0x7F, 0x7F, 0x7F, 0x7F, 0x00, 0x00};
+// for USB:
+	uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
+	uchar cnt_idle = 0;
+	uchar flag_idle = 0; // shows that USB idle time is over and we can send report
 
-uchar delay_idle = INIT_IDLE_TIME; // step - 4ms
-uchar cnt_idle = 0;
-uchar flag_idle = 0; // shows that idle time is over and can send report
-
-uchar flag_report = 0; // shows that information from gamepad is ready to form like in descriptor
-
-// PS var and protocol:
-	uchar shift_report_buf[REPORT_SIZE];
-
-	uchar cnt_byte = 0;
-	uchar cnt_edge = 0;
-	uchar cnt_rep_buf = 5;
-	
-	uchar offset;
+//uchar flag_report = 0; // shows that information from gamepad is ready to form like in descriptor
 	
 /*********************************************************************************/
 /* CLK ~ 7 kHz, issue data LSB on MISO and MOSI on falling edge, read on front   */
@@ -112,177 +100,138 @@ USB_PUBLIC uchar usbFunctionWrite(uchar *data, uchar len)
 	return 1;
 }
 
-inline void hardwareInit()
+uchar initHW() // return chosen gamepad code: 0 - SEGA, 1 - PS
 {
-	DDR_LED = (1 << LED0) | (1 << LED1);
+	DDR_LED |= (1 << LED0) | (1 << LED1);
 
-	// for idle time:
-	TCCR1B = (1 << CS10);
-	TIMSK1 = (1 << TOIE1);
+	DDR_CTRL &= ~(1 << CTRL);
+	PORT_CTRL |= (1 << CTRL);
+
+// idle timer:
+	TCCR0A = (1 << WGM01); // CTC mode with OCRA
+	TCCR0B = (1 << CS02); // presc = 256 => 4 ms <=> 250 cnt
+	OCR0A = STEP_IDLE_CONF;
 	
-// this func call after "hardware_SEGA_init" when PS mode is activating
-	DDR_PS &= ~(1 << PS_MISO) & ~(1 << PS_ACK); // inputs
-#ifdef DEBUG
-	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK) | (1 << PS_DEBUG); // outputs
-#else 
-	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
-#endif
-	
-// add pullup on inputs and issue one on outputs:
-// 				***** ATTENTION *****
-// on MISO PULLUP external and must be turn off on mc
-	PORT_PS &= ~(1 << PS_ACK) & ~(1 << PS_MISO); // no pullup
-	PORT_PS = (1 << PS_CS) | (1 << PS_CLK);
-	
-// duplicate main timer:
-	TCCR0A = (1 << WGM01);
-	TCCR0B = (1 << CS01); // presc = 8 => 70 us <=> 140 cnt
 	TIMSK0 = (1 << OCIE0A);
-	OCR0A = CLK_HALF_PER + DELTA;
 	
-// for PS CLK ~ 7 kHz, DO NOT forget to approve with CPU freq:
-	TCCR2A = (1 << WGM21); // CTC mode with OCR2A 
-	TCCR2B = (1 << CS21); // presc = 8 => half period CLK 70 us <=> 140 cnt
-	OCR2A = CLK_HALF_PER;
-	TIMSK2 = (1 << OCIE2A);
+// choose controller:
+	if((PIN_CTRL & (1 << CTRL)) == (1 << CTRL))
+		return 1; // PS
+	else
+		return 0; // SEGA
 }
 
-ISR(TIMER1_OVF_vect)
+void initSPI()
 {
-	TIMSK0 &= ~(1 << OCIE0A);
-	TIMSK2 &= ~(1 << OCIE2A);
+// master SPI pins output:
+	DDRB |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	PORTB |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+
+// master SPI input:
+	DDRB &= ~(1 << PS_MISO);
+	PORTB |= (1 << PS_MISO);
 	
-		sei();
-		
-		if(cnt_idle < delay_idle) cnt_idle++;
-		else
-		{
-			TIMSK1 &= ~(1 << TOIE1);
-			flag_idle = 1;
-		}
+// SPI config:
+	SPCR |= (1 << SPE) | (1 << MSTR) | (1 << DORD); // enable SPI, master mode, LSB first mode
+	SPCR |= (1 << CPOL) | (1 << CPHA); // issue on fall, read on front
 	
-	TIMSK0 |= (1 << OCIE0A);
-	TIMSK2 |= (1 << OCIE2A);
+// set presc for SCK: F_CPU/128 (16 MHz / 128 = 125 kHz)
+	SPCR |= (1 << SPR0) | (1 << SPR1);
+	SPSR &= ~(1 << SPI2X);
 }
 
-#define END_ONE_BYTE (cnt_edge == 18)
-#define ACT_TRANS (cnt_edge < 16)
-#define IDLE_STATE (cnt_edge == 15)
-#define LAST_BYTE (cnt_byte == 9)
-
-ISR(TIMER2_COMPA_vect)
-{	
-	TCNT0 = 5; // reset duplicate timer
-	TIMSK0 &= ~(1 << OCIE0A); // "cli"
-	
+ISR(TIMER0_COMPA_vect)
+{
+	//TIMSK2 &= ~(1 << OCIE2A); // "cli" for avoid nested interrupts
 	sei();
 	
-	if((TIFR0 & (1 << OCF0A)) == (1 << OCF0A)) clearShiftBuf();
-	
-	// CLK:
-	if((cnt_byte > 0) & ACT_TRANS) PORT_PS ^= (1 << PS_CLK);
-	
-	// MISO:
-	if((cnt_byte > 3) & ACT_TRANS & ((cnt_edge & 0x01) == 1)) // odd "cnt_edge"
-	{
-		offset = (cnt_edge - 1) >> 1;
-		shift_report_buf[cnt_rep_buf] |= (PIN_PS & 0x01) << offset;
-	}
-	
-	// MOSI:
-	if(((cnt_byte == 1) & (cnt_edge < 2)) |
-	  ((cnt_byte == 2) & ((cnt_edge == 2) | (cnt_edge == 3) | (cnt_edge == 12) | (cnt_edge == 13)))) PORT_PS |= (1 << PS_MOSI);
-	else PORT_PS &= ~(1 << PS_MOSI);
-	
-	// CS:
-	if((cnt_byte == 0) & IDLE_STATE) PORT_PS &= ~(1 << PS_CS);
-	else if(LAST_BYTE & END_ONE_BYTE) PORT_PS |= (1 << PS_CS);
-	
-	// counters - required go to ASM:
-	if(cnt_byte == 0) // between byte transmit
-	{
-		if(IDLE_STATE)
-		{
-			cnt_edge = 0;
-			cnt_byte++;
-		}
-		else cnt_edge++;
-	}
-	else if((cnt_byte > 0) & (cnt_byte < 4)) 
-	{
-		if(END_ONE_BYTE)
-		{
-			cnt_edge = 0;
-			cnt_byte++;
-		}
-		else cnt_edge++;
-	}
+	if(cnt_idle < delay_idle) cnt_idle++;
 	else
 	{
-		if(END_ONE_BYTE)
-		{
-			cnt_edge = 0;
-			cnt_rep_buf--;
-			
-			if(LAST_BYTE)
-			{
-				flag_report = 1;
-				cnt_byte = 0;
-				
-				//TIMSK1 &= ~(1 << OCIE1A);
-			}
-			else cnt_byte++;
-		}
-		else cnt_edge++;
+		TIMSK0 &= ~(1 << OCIE0A);
+		flag_idle = 1;
 	}
-	
-	TIMSK0 |= (1 << OCIE0A); // "sei"
+	//TIMSK2 |= (1 << OCIE2A); // "sei"
 }
 
-inline void clearShiftBuf()
+uchar readSPI()
 {
-	if(!flag_report)
+	uchar spsr_buf; // SPI status reg buf var
+	int froze_cnt; // for avoid froze when wait SPI transmit flag
+	
+	PORTB &= ~(1 << PS_CS); // set low CS before transfer
+	
+	for(uchar i = 0; i < 9; i++)
 	{
-		shift_report_buf[0] = 0;
-		shift_report_buf[1] = 0;
-		shift_report_buf[2] = 0;
-		shift_report_buf[3] = 0;
-		shift_report_buf[4] = 0;
-		shift_report_buf[5] = 0;	
+		spsr_buf = SPDR; // read SPI data reg to clear all flags and prepare SPI transmit
+		
+	// master SPI interface bytes:
+		if(i == 0)
+			SPDR = 0x01;
+		else if(i == 1)
+			SPDR = 0x42;
+		else
+			SPDR = 0xFF;
+			
+	// wait end of SPI transfer:
+		froze_cnt = 0;
+		spsr_buf = SPSR & (1 << SPIF); // read SPI status reg
+		
+		while(spsr_buf != (1 << SPIF))
+		{
+			if(froze_cnt >= SPI_FROZE)
+			{
+				PORTB |= (1 << PS_CS); // set high CS
+				return 0; // failure: SPI is frozen
+			}
+			else
+				froze_cnt++;
+			
+			spsr_buf = SPSR & (1 << SPIF);
+		}
+		
+	// get gamepad state:
+		if((i == 3) | (i == 4))
+			report_buf[i - 3] = ~SPDR; // buttons must be inverted
+		else if(i > 4)
+			report_buf[i - 3] = SPDR; // analogs
 	}
 	
-	cnt_rep_buf = 5;
-	
-	cnt_edge = 0;
-	cnt_byte = 0;
-	
-	PORT_PS |= (1 << PS_CS) | (1 << PS_CLK);
-	TIFR0 |= (1 << OCF0A);
+	PORTB |= (1 << PS_CS); // set high CS
+	return 1; // successful: SPI packet complete
 }
 
-void main()
+int main()
 {
-	char flag_report_rdy = 0;
+	uchar flag_report_rdy = 0;
+	uchar flag_ctrl = 0;
 	
-	hardwareInit();
+	flag_ctrl = initHW();
+	
+	if(flag_ctrl)
+		initSPI();
+	//else
+		//initSEGA();
 	
 	#ifndef DEBUG
 		usbDeviceConnect();
 		usbInit();
 	#endif
 	
-// full reset timers:
+// full reset timer:
 	TCNT0 = 0;
-	TCNT1 = 0;
 	TCNT2 = 0;
 	
 	TIFR0 |= (1 << OCF0A);
-	TIFR1 |= (1 << TOV1);
 	TIFR2 |= (1 << OCF2A);
 	
 	sei();
-    while (1) 
+    while(1) 
     {
+		#ifndef DEBUG
+			usbPoll(); // ~ 9.63 us (all timings write in 16 MHz CPU freq)
+		#endif
+		
 		if(flag_idle & flag_report_rdy) // send report immediately after "idle" time has passed:
 		{
 			if(usbInterruptIsReady())
@@ -291,49 +240,30 @@ void main()
 					usbSetInterrupt(report_buf, REPORT_SIZE);  // ~ 31.5 us
 				#endif
 				
-				#ifdef PROTEUS
-					usbSetInterrupt(report_buf, REPORT_SIZE);
-				#endif
+				cnt_idle = 0;
 				
-				//clearShiftBuf();
+				flag_idle = 0;
 				flag_report_rdy = 0;
 				
-			// full reset idle timer then enable interrupt:
-				TCNT1 = 0;
-				TIFR1 |= (1 << TOV1); 
-				TIMSK1 |= (1 << TOIE1);
+			// full reset timer 0 then enable interrupt:
+				TCNT0 = 0;
+				TIFR0 |= (1 << OCF0A);
+				TIMSK0 |= (1 << OCIE0A);
+				
+				PORT_LED ^= (1 << LED1);
 			}
 		}
 		
-		if(flag_report) // build report:
+		if(flag_ctrl) // build report:
 		{
-			report_buf[0] = shift_report_buf[1]; // mb required "turn over" descriptor
-			report_buf[1] = shift_report_buf[0];
-			report_buf[2] = shift_report_buf[3];
-			report_buf[3] = shift_report_buf[2];
-			report_buf[4] = ~shift_report_buf[4];
-			report_buf[5] = ~shift_report_buf[5];
+			flag_report_rdy = readSPI();
 			
-			shift_report_buf[0] = 0;
-			shift_report_buf[1] = 0;
-			shift_report_buf[2] = 0;
-			shift_report_buf[3] = 0;
-			shift_report_buf[4] = 0;
-			shift_report_buf[5] = 0;
-			
-			cnt_rep_buf = 5;
-			
-			PORT_PS |= (1 << PS_CS) | (1 << PS_CLK);
-			
-			flag_report = 0;
-			flag_report_rdy = 1;
+			PORT_LED ^= (1 << LED0);
 		}
-		
-		if((report_buf[4] != 0x00) | (report_buf[5] != 0x00)) PORT_LED ^= (1 << LED0);
-		
-		if((cnt_byte == 0) & (cnt_edge == 10))
-		{
-			 usbPoll();
-		}
+		//else
+		//{
+		//	
+		//	PORT_LED ^= (1 << LED0);
+		//}
     }
 }
