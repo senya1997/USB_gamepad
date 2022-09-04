@@ -88,11 +88,10 @@
 
 #define PORT_PS PORTB
 #define DDR_PS DDRB
-#define PIN_PS PINB
 
 // controllers use 3.3 V
 // no one pins number must not coincide with SEL pin SEGA controller
-	#define PS_MISO 4 /* PS pin 1: "DATA", always "0" pin MC, must be pullup to 3.3 or 5 V through 1kOhm */
+	#define PS_MISO 4 /* PS pin 1: "DATA", always "0" pin MC, must be pull up to 3.3 or 5 V through 1kOhm */
 	#define PS_MOSI 3 /* PS pin 2: "CMD" */
 	#define PS_CS	2 /* PS pin 6: "ATT", attention new packet */
 	#define PS_CLK	5 /* PS pin 7: ~7 kHz */

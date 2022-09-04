@@ -124,12 +124,12 @@ uchar initHW() // return chosen gamepad code: 0 - SEGA, 1 - PS
 void initSPI()
 {
 // master SPI pins output:
-	DDRB |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
-	PORTB |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	DDR_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
+	PORT_PS |= (1 << PS_CS) | (1 << PS_MOSI) | (1 << PS_CLK);
 
 // master SPI input:
-	DDRB &= ~(1 << PS_MISO);
-	PORTB |= (1 << PS_MISO);
+	DDR_PS &= ~(1 << PS_MISO);
+	PORT_PS |= (1 << PS_MISO);
 	
 // SPI config:
 	SPCR |= (1 << SPE) | (1 << MSTR) | (1 << DORD); // enable SPI, master mode, LSB first mode
@@ -159,7 +159,7 @@ uchar readSPI()
 	uchar spsr_buf; // SPI status reg buf var
 	int froze_cnt; // for avoid froze when wait SPI transmit flag
 	
-	PORTB &= ~(1 << PS_CS); // set low CS before transfer
+	PORT_PS &= ~(1 << PS_CS); // set low CS before transfer
 	
 	for(uchar i = 0; i < 9; i++)
 	{
@@ -181,7 +181,7 @@ uchar readSPI()
 		{
 			if(froze_cnt >= SPI_FROZE)
 			{
-				PORTB |= (1 << PS_CS); // set high CS
+				PORT_PS |= (1 << PS_CS); // set high CS
 				return 0; // failure: SPI is frozen
 			}
 			else
@@ -197,7 +197,7 @@ uchar readSPI()
 			report_buf[i - 3] = SPDR; // analogs
 	}
 	
-	PORTB |= (1 << PS_CS); // set high CS
+	PORT_PS |= (1 << PS_CS); // set high CS
 	return 1; // successful: SPI packet complete
 }
 
